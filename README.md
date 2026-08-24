@@ -21,6 +21,8 @@ This firmware estimates state of charge. It is **not** a battery safety system.
 See [Safety boundary](#safety-boundary) before constructing or operating the
 monitor.
 
+This project started based on https://github.com/jurgen2005/esphome-shunt.
+
 ## Supported default hardware
 
 | Item                      | Default                                              |
