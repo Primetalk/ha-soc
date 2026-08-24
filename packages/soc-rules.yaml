@@ -1,0 +1,646 @@
+# Compile-time rule list. Names and directions are static because ESPHome
+# entities are created at compile time. Levels and hysteresis are persistent,
+# runtime-editable Home Assistant numbers.
+
+globals:
+  - id: soc_rule_startup_ready
+    type: bool
+    restore_value: false
+    initial_value: "false"
+
+  - id: soc_rules_armed
+    type: bool
+    restore_value: false
+    initial_value: "false"
+
+  - id: soc_rule_engine_ready_live
+    type: bool
+    restore_value: false
+    initial_value: "false"
+
+  - id: soc_rule_latches
+    # Keep this size aligned with RULE_LATCH_WORDS in the helper header.
+    type: uint32_t[3]
+    restore_value: true
+    initial_value: "{0, 0, 0}"
+    update_interval: ${restored_state_poll_interval}
+
+  - id: soc_event_journal
+    # Keep this size aligned with EVENT_JOURNAL_WORDS in the helper header.
+    type: uint32_t[9]
+    restore_value: true
+    initial_value: "{0, 0, 0, 0, 0, 0, 0, 0, 0}"
+    update_interval: ${restored_state_poll_interval}
+
+  - id: last_event_delivery_replay
+    type: bool
+    restore_value: false
+    initial_value: "false"
+
+esphome:
+  on_boot:
+    - priority: -200
+      then:
+        - delay: ${rule_startup_suppression}
+        - lambda: id(soc_rule_startup_ready) = true;
+        - script.execute: evaluate_soc_rules
+
+number:
+  - platform: template
+    name: Stop Charge Level
+    id: stop_charge_level
+    unit_of_measurement: "%"
+    mode: box
+    min_value: 1
+    max_value: 100
+    step: 0.5
+    initial_value: ${stop_charge_level_default}
+    restore_value: true
+    optimistic: true
+    on_value:
+      then:
+        - lambda: id(soc_rules_armed) = false;
+        - script.execute: evaluate_soc_rules
+
+  - platform: template
+    name: Stop Charge Hysteresis
+    id: stop_charge_hysteresis
+    unit_of_measurement: "%"
+    mode: box
+    min_value: 0.5
+    max_value: 20
+    step: 0.5
+    initial_value: ${stop_charge_hysteresis_default}
+    restore_value: true
+    optimistic: true
+    on_value:
+      then:
+        - lambda: id(soc_rules_armed) = false;
+        - script.execute: evaluate_soc_rules
+
+  - platform: template
+    name: Capacity Warning Level
+    id: capacity_warning_level
+    unit_of_measurement: "%"
+    mode: box
+    min_value: 0
+    max_value: 99
+    step: 0.5
+    initial_value: ${capacity_warning_level_default}
+    restore_value: true
+    optimistic: true
+    on_value:
+      then:
+        - lambda: id(soc_rules_armed) = false;
+        - script.execute: evaluate_soc_rules
+
+  - platform: template
+    name: Capacity Warning Hysteresis
+    id: capacity_warning_hysteresis
+    unit_of_measurement: "%"
+    mode: box
+    min_value: 0.5
+    max_value: 20
+    step: 0.5
+    initial_value: ${capacity_warning_hysteresis_default}
+    restore_value: true
+    optimistic: true
+    on_value:
+      then:
+        - lambda: id(soc_rules_armed) = false;
+        - script.execute: evaluate_soc_rules
+
+  - platform: template
+    name: Stop Load Level
+    id: stop_load_level
+    unit_of_measurement: "%"
+    mode: box
+    min_value: 0
+    max_value: 99
+    step: 0.5
+    initial_value: ${stop_load_level_default}
+    restore_value: true
+    optimistic: true
+    on_value:
+      then:
+        - lambda: id(soc_rules_armed) = false;
+        - script.execute: evaluate_soc_rules
+
+  - platform: template
+    name: Stop Load Hysteresis
+    id: stop_load_hysteresis
+    unit_of_measurement: "%"
+    mode: box
+    min_value: 0.5
+    max_value: 20
+    step: 0.5
+    initial_value: ${stop_load_hysteresis_default}
+    restore_value: true
+    optimistic: true
+    on_value:
+      then:
+        - lambda: id(soc_rules_armed) = false;
+        - script.execute: evaluate_soc_rules
+
+binary_sensor:
+  - platform: template
+    name: SOC Rule Engine Ready
+    id: soc_rule_engine_ready
+    entity_category: diagnostic
+
+  - platform: template
+    name: SOC Rule Configuration Valid
+    id: soc_rule_configuration_valid
+    entity_category: diagnostic
+    lambda: |-
+      if (!id(stop_charge_level).has_state() ||
+          !id(stop_charge_hysteresis).has_state() ||
+          !id(capacity_warning_level).has_state() ||
+          !id(capacity_warning_hysteresis).has_state() ||
+          !id(stop_load_level).has_state() ||
+          !id(stop_load_hysteresis).has_state()) {
+        return false;
+      }
+      return battery_monitor::soc_rule_configuration_is_valid(
+          id(stop_charge_level).state, id(stop_charge_hysteresis).state,
+          id(capacity_warning_level).state, id(capacity_warning_hysteresis).state,
+          id(stop_load_level).state, id(stop_load_hysteresis).state);
+
+  - platform: template
+    name: Stop Charge Requested
+    id: stop_charge_requested
+
+  - platform: template
+    name: Capacity Warning Active
+    id: capacity_warning_active
+
+  - platform: template
+    name: Stop Load Requested
+    id: stop_load_requested
+
+  - platform: template
+    name: Last SOC Event Was Valid
+    id: last_soc_event_was_valid
+    entity_category: diagnostic
+
+  - platform: template
+    name: Last SOC Event Was Suspect
+    id: last_soc_event_was_suspect
+    entity_category: diagnostic
+
+sensor:
+  - platform: template
+    name: Last SOC Event Value
+    id: last_soc_event_value
+    unit_of_measurement: "%"
+    accuracy_decimals: 2
+    entity_category: diagnostic
+    update_interval: never
+
+  - platform: template
+    name: Last SOC Event Device Uptime
+    id: last_soc_event_uptime
+    unit_of_measurement: s
+    device_class: duration
+    accuracy_decimals: 0
+    entity_category: diagnostic
+    update_interval: never
+
+text_sensor:
+  - platform: template
+    name: Last SOC Event Sequence
+    id: last_soc_event_sequence
+    entity_category: diagnostic
+    update_interval: never
+
+  - platform: template
+    name: Last SOC Event Rule
+    id: last_soc_event_rule
+    entity_category: diagnostic
+    update_interval: never
+
+  - platform: template
+    name: Last SOC Event Direction
+    id: last_soc_event_direction
+    entity_category: diagnostic
+    update_interval: never
+
+  - platform: template
+    name: Last SOC Event Unix Time
+    id: last_soc_event_unix_time
+    entity_category: diagnostic
+    update_interval: never
+
+  - platform: template
+    name: Last SOC Event Delivery
+    id: last_soc_event_delivery
+    entity_category: diagnostic
+    update_interval: never
+
+event:
+  - platform: template
+    name: SOC Rule Crossing
+    id: soc_rule_crossing_event
+    event_types:
+      - stop_charge
+      - capacity_warning
+      - stop_load
+      - replay
+
+script:
+  - id: evaluate_soc_rules
+    mode: restart
+    then:
+      - if:
+          condition:
+            lambda: |-
+              const bool current_fresh = id(last_measurement_ms) != 0 &&
+                  (uint32_t) (millis() - id(last_measurement_ms)) <= ${measurement_stale_after_ms};
+              static_assert(
+                  sizeof(id(soc_rule_latches)) / sizeof(id(soc_rule_latches)[0]) ==
+                      battery_monitor::RULE_LATCH_WORDS,
+                  "Rule-latch array size does not match its schema");
+              static_assert(
+                  sizeof(id(soc_event_journal)) / sizeof(id(soc_event_journal)[0]) ==
+                      battery_monitor::EVENT_JOURNAL_WORDS,
+                  "Event-journal array size does not match its schema");
+              const bool measurements_ok = current_fresh &&
+                  id(battery_current).has_state() &&
+                  id(battery_voltage).has_state() &&
+                  std::isfinite(id(battery_current).state) &&
+                  std::isfinite(id(battery_voltage).state);
+              const bool config_values_present = id(rated_capacity_ah).has_state() &&
+                  std::isfinite(id(rated_capacity_ah).state) &&
+                  id(rated_capacity_ah).state > 0.0f &&
+                  id(stop_charge_level).has_state() &&
+                  id(stop_charge_hysteresis).has_state() &&
+                  id(capacity_warning_level).has_state() &&
+                  id(capacity_warning_hysteresis).has_state() &&
+                  id(stop_load_level).has_state() &&
+                  id(stop_load_hysteresis).has_state();
+              const bool config_ok = config_values_present &&
+                  battery_monitor::soc_rule_configuration_is_valid(
+                      id(stop_charge_level).state, id(stop_charge_hysteresis).state,
+                      id(capacity_warning_level).state,
+                      id(capacity_warning_hysteresis).state,
+                      id(stop_load_level).state, id(stop_load_hysteresis).state);
+              return !id(soc_valid_live) || !measurements_ok || !config_ok;
+          then:
+            # Preserve latches internally for deterministic reconstruction, but
+            # expose conditions as unavailable while the engine is unready.
+            - lambda: |-
+                id(soc_rules_armed) = false;
+                id(soc_rule_engine_ready_live) = false;
+            - script.execute: publish_soc_rule_conditions
+          else:
+            - if:
+                condition:
+                  lambda: return !id(soc_rule_startup_ready) || !id(soc_rules_armed);
+                then:
+                  # Reconstruct latches using restored state inside each
+                  # hysteresis band, but never emit a startup/config event.
+                  - lambda: |-
+                      const float soc = battery_monitor::soc_percent(
+                          id(soc_remaining_ah_live), id(rated_capacity_ah).state);
+                      if (!battery_monitor::rule_latch_record_is_valid(id(soc_rule_latches))) {
+                        battery_monitor::reset_rule_latches(id(soc_rule_latches));
+                      }
+                      const bool stop_charge = battery_monitor::update_upward_latch(
+                          battery_monitor::rule_latch_value(
+                              id(soc_rule_latches),
+                              battery_monitor::RULE_LATCH_STOP_CHARGE_FLAG),
+                          soc,
+                          id(stop_charge_level).state, id(stop_charge_hysteresis).state);
+                      const bool capacity_warning = battery_monitor::update_downward_latch(
+                          battery_monitor::rule_latch_value(
+                              id(soc_rule_latches),
+                              battery_monitor::RULE_LATCH_CAPACITY_WARNING_FLAG),
+                          soc,
+                          id(capacity_warning_level).state, id(capacity_warning_hysteresis).state);
+                      const bool stop_load = battery_monitor::update_downward_latch(
+                          battery_monitor::rule_latch_value(
+                              id(soc_rule_latches),
+                              battery_monitor::RULE_LATCH_STOP_LOAD_FLAG),
+                          soc,
+                          id(stop_load_level).state, id(stop_load_hysteresis).state);
+                      battery_monitor::set_rule_latch(
+                          id(soc_rule_latches),
+                          battery_monitor::RULE_LATCH_STOP_CHARGE_FLAG, stop_charge);
+                      battery_monitor::set_rule_latch(
+                          id(soc_rule_latches),
+                          battery_monitor::RULE_LATCH_CAPACITY_WARNING_FLAG, capacity_warning);
+                      battery_monitor::set_rule_latch(
+                          id(soc_rule_latches),
+                          battery_monitor::RULE_LATCH_STOP_LOAD_FLAG, stop_load);
+                      id(soc_rules_armed) = id(soc_rule_startup_ready);
+                      id(soc_rule_engine_ready_live) = id(soc_rule_startup_ready);
+                  - script.execute: publish_soc_rule_conditions
+                else:
+                  - script.execute: evaluate_stop_charge_rule
+                  - script.execute: evaluate_capacity_warning_rule
+                  - script.execute: evaluate_stop_load_rule
+                  - lambda: id(soc_rule_engine_ready_live) = true;
+                  - script.execute: publish_soc_rule_conditions
+
+  - id: evaluate_stop_charge_rule
+    mode: restart
+    then:
+      - lambda: |-
+          const float soc = battery_monitor::soc_percent(
+              id(soc_remaining_ah_live), id(rated_capacity_ah).state);
+          const bool previous = battery_monitor::rule_latch_value(
+              id(soc_rule_latches), battery_monitor::RULE_LATCH_STOP_CHARGE_FLAG);
+          const bool next = battery_monitor::update_upward_latch(
+              previous, soc, id(stop_charge_level).state,
+              id(stop_charge_hysteresis).state);
+          battery_monitor::set_rule_latch(
+              id(soc_rule_latches), battery_monitor::RULE_LATCH_STOP_CHARGE_FLAG, next);
+          if (!previous && next) id(record_soc_rule_event).execute(1, 1);
+
+  - id: evaluate_capacity_warning_rule
+    mode: restart
+    then:
+      - lambda: |-
+          const float soc = battery_monitor::soc_percent(
+              id(soc_remaining_ah_live), id(rated_capacity_ah).state);
+          const bool previous = battery_monitor::rule_latch_value(
+              id(soc_rule_latches), battery_monitor::RULE_LATCH_CAPACITY_WARNING_FLAG);
+          const bool next = battery_monitor::update_downward_latch(
+              previous, soc, id(capacity_warning_level).state,
+              id(capacity_warning_hysteresis).state);
+          battery_monitor::set_rule_latch(
+              id(soc_rule_latches), battery_monitor::RULE_LATCH_CAPACITY_WARNING_FLAG, next);
+          if (!previous && next) id(record_soc_rule_event).execute(2, -1);
+
+  - id: evaluate_stop_load_rule
+    mode: restart
+    then:
+      - lambda: |-
+          const float soc = battery_monitor::soc_percent(
+              id(soc_remaining_ah_live), id(rated_capacity_ah).state);
+          const bool previous = battery_monitor::rule_latch_value(
+              id(soc_rule_latches), battery_monitor::RULE_LATCH_STOP_LOAD_FLAG);
+          const bool next = battery_monitor::update_downward_latch(
+              previous, soc, id(stop_load_level).state,
+              id(stop_load_hysteresis).state);
+          battery_monitor::set_rule_latch(
+              id(soc_rule_latches), battery_monitor::RULE_LATCH_STOP_LOAD_FLAG, next);
+          if (!previous && next) id(record_soc_rule_event).execute(3, -1);
+
+  - id: publish_soc_rule_conditions
+    mode: restart
+    then:
+      - binary_sensor.template.publish:
+          id: soc_rule_engine_ready
+          state: !lambda return id(soc_rule_engine_ready_live);
+      - if:
+          condition:
+            lambda: return id(soc_rule_engine_ready_live);
+          then:
+            - binary_sensor.template.publish:
+                id: stop_charge_requested
+                state: !lambda |-
+                  return battery_monitor::rule_latch_value(
+                      id(soc_rule_latches),
+                      battery_monitor::RULE_LATCH_STOP_CHARGE_FLAG);
+            - binary_sensor.template.publish:
+                id: capacity_warning_active
+                state: !lambda |-
+                  return battery_monitor::rule_latch_value(
+                      id(soc_rule_latches),
+                      battery_monitor::RULE_LATCH_CAPACITY_WARNING_FLAG);
+            - binary_sensor.template.publish:
+                id: stop_load_requested
+                state: !lambda |-
+                  return battery_monitor::rule_latch_value(
+                      id(soc_rule_latches), battery_monitor::RULE_LATCH_STOP_LOAD_FLAG);
+          else:
+            - binary_sensor.invalidate_state: stop_charge_requested
+            - binary_sensor.invalidate_state: capacity_warning_active
+            - binary_sensor.invalidate_state: stop_load_requested
+
+  - id: record_soc_rule_event
+    mode: queued
+    max_runs: 6
+    parameters:
+      rule_code: int
+      direction: int
+    then:
+      - lambda: |-
+          uint32_t sequence = battery_monitor::event_journal_is_valid(id(soc_event_journal))
+              ? id(soc_event_journal)[battery_monitor::EVENT_JOURNAL_SEQUENCE_INDEX]
+              : 0U;
+          sequence++;
+          if (sequence == 0U) sequence = 1U;
+          const float event_soc = battery_monitor::soc_percent(
+              id(soc_remaining_ah_live), id(rated_capacity_ah).state);
+          const bool event_suspect = battery_monitor::soc_is_suspect(
+              id(soc_valid_live), event_soc,
+              ${soc_plausible_min_percent}, ${soc_plausible_max_percent});
+          const auto now = id(system_time).now();
+          uint32_t flags = 0U;
+          battery_monitor::set_flag(
+              flags, battery_monitor::EVENT_JOURNAL_SOC_VALID_FLAG, id(soc_valid_live));
+          battery_monitor::set_flag(
+              flags, battery_monitor::EVENT_JOURNAL_SOC_SUSPECT_FLAG, event_suspect);
+          battery_monitor::set_flag(
+              flags, battery_monitor::EVENT_JOURNAL_TIMESTAMP_VALID_FLAG, now.is_valid());
+
+          // Invalidate first and publish the magic last. ESPHome persists the
+          // complete array as one preference record after this lambda returns.
+          id(soc_event_journal)[battery_monitor::EVENT_JOURNAL_MAGIC_INDEX] = 0U;
+          id(soc_event_journal)[battery_monitor::EVENT_JOURNAL_SEQUENCE_INDEX] = sequence;
+          id(soc_event_journal)[battery_monitor::EVENT_JOURNAL_UPTIME_SECONDS_INDEX] =
+              millis() / 1000U;
+          id(soc_event_journal)[battery_monitor::EVENT_JOURNAL_EPOCH_SECONDS_INDEX] =
+              now.is_valid() ? static_cast<uint32_t>(now.timestamp) : 0U;
+          id(soc_event_journal)[battery_monitor::EVENT_JOURNAL_SOC_PERCENT_BITS_INDEX] =
+              battery_monitor::encode_float(event_soc);
+          id(soc_event_journal)[battery_monitor::EVENT_JOURNAL_RULE_CODE_INDEX] =
+              static_cast<uint32_t>(rule_code);
+          id(soc_event_journal)[battery_monitor::EVENT_JOURNAL_DIRECTION_INDEX] =
+              direction > 0 ? battery_monitor::EVENT_DIRECTION_UP
+                            : battery_monitor::EVENT_DIRECTION_DOWN;
+          id(soc_event_journal)[battery_monitor::EVENT_JOURNAL_FLAGS_INDEX] = flags;
+          id(soc_event_journal)[battery_monitor::EVENT_JOURNAL_VERSION_INDEX] =
+              battery_monitor::EVENT_JOURNAL_VERSION;
+          id(soc_event_journal)[battery_monitor::EVENT_JOURNAL_MAGIC_INDEX] =
+              battery_monitor::EVENT_JOURNAL_MAGIC;
+          id(last_event_delivery_replay) = false;
+      - script.execute: publish_last_soc_event
+      - event.trigger:
+          id: soc_rule_crossing_event
+          event_type: !lambda |-
+            switch (id(soc_event_journal)[battery_monitor::EVENT_JOURNAL_RULE_CODE_INDEX]) {
+              case 1: return std::string("stop_charge");
+              case 2: return std::string("capacity_warning");
+              case 3: return std::string("stop_load");
+              default: return std::string("replay");
+            }
+      - homeassistant.event:
+          event: esphome.battery_monitor_soc_rule
+          data:
+            device: ${device_name}
+            sequence: !lambda |-
+              return std::to_string(
+                  id(soc_event_journal)[battery_monitor::EVENT_JOURNAL_SEQUENCE_INDEX]);
+            rule: !lambda |-
+              switch (id(soc_event_journal)[battery_monitor::EVENT_JOURNAL_RULE_CODE_INDEX]) {
+                case 1: return std::string("stop_charge");
+                case 2: return std::string("capacity_warning");
+                case 3: return std::string("stop_load");
+                default: return std::string("unknown");
+              }
+            direction: !lambda |-
+              const bool up = id(soc_event_journal)[
+                  battery_monitor::EVENT_JOURNAL_DIRECTION_INDEX] ==
+                  battery_monitor::EVENT_DIRECTION_UP;
+              return std::string(up ? "up" : "down");
+            soc_percent: !lambda |-
+              return str_sprintf(
+                  "%.3f", battery_monitor::decode_float(id(soc_event_journal)[
+                      battery_monitor::EVENT_JOURNAL_SOC_PERCENT_BITS_INDEX]));
+            uptime_seconds: !lambda |-
+              return std::to_string(id(soc_event_journal)[
+                  battery_monitor::EVENT_JOURNAL_UPTIME_SECONDS_INDEX]);
+            epoch_seconds: !lambda |-
+              return std::to_string(id(soc_event_journal)[
+                  battery_monitor::EVENT_JOURNAL_EPOCH_SECONDS_INDEX]);
+            timestamp_valid: !lambda |-
+              const bool valid = battery_monitor::has_flag(
+                  id(soc_event_journal)[battery_monitor::EVENT_JOURNAL_FLAGS_INDEX],
+                  battery_monitor::EVENT_JOURNAL_TIMESTAMP_VALID_FLAG);
+              return std::string(valid ? "true" : "false");
+            soc_valid: !lambda |-
+              const bool valid = battery_monitor::has_flag(
+                  id(soc_event_journal)[battery_monitor::EVENT_JOURNAL_FLAGS_INDEX],
+                  battery_monitor::EVENT_JOURNAL_SOC_VALID_FLAG);
+              return std::string(valid ? "true" : "false");
+            soc_suspect: !lambda |-
+              const bool suspect = battery_monitor::has_flag(
+                  id(soc_event_journal)[battery_monitor::EVENT_JOURNAL_FLAGS_INDEX],
+                  battery_monitor::EVENT_JOURNAL_SOC_SUSPECT_FLAG);
+              return std::string(suspect ? "true" : "false");
+            replay: "false"
+
+  - id: replay_last_soc_rule_event
+    mode: restart
+    then:
+      - if:
+          condition:
+            lambda: |-
+              return battery_monitor::event_journal_is_valid(id(soc_event_journal));
+          then:
+            - lambda: id(last_event_delivery_replay) = true;
+            - script.execute: publish_last_soc_event
+            - event.trigger:
+                id: soc_rule_crossing_event
+                event_type: replay
+            - homeassistant.event:
+                event: esphome.battery_monitor_soc_rule
+                data:
+                  device: ${device_name}
+                  sequence: !lambda |-
+                    return std::to_string(id(soc_event_journal)[
+                        battery_monitor::EVENT_JOURNAL_SEQUENCE_INDEX]);
+                  rule: !lambda |-
+                    switch (id(soc_event_journal)[
+                        battery_monitor::EVENT_JOURNAL_RULE_CODE_INDEX]) {
+                      case 1: return std::string("stop_charge");
+                      case 2: return std::string("capacity_warning");
+                      case 3: return std::string("stop_load");
+                      default: return std::string("unknown");
+                    }
+                  direction: !lambda |-
+                    const bool up = id(soc_event_journal)[
+                        battery_monitor::EVENT_JOURNAL_DIRECTION_INDEX] ==
+                        battery_monitor::EVENT_DIRECTION_UP;
+                    return std::string(up ? "up" : "down");
+                  soc_percent: !lambda |-
+                    return str_sprintf(
+                        "%.3f", battery_monitor::decode_float(id(soc_event_journal)[
+                            battery_monitor::EVENT_JOURNAL_SOC_PERCENT_BITS_INDEX]));
+                  uptime_seconds: !lambda |-
+                    return std::to_string(id(soc_event_journal)[
+                        battery_monitor::EVENT_JOURNAL_UPTIME_SECONDS_INDEX]);
+                  epoch_seconds: !lambda |-
+                    return std::to_string(id(soc_event_journal)[
+                        battery_monitor::EVENT_JOURNAL_EPOCH_SECONDS_INDEX]);
+                  timestamp_valid: !lambda |-
+                    const bool valid = battery_monitor::has_flag(
+                        id(soc_event_journal)[battery_monitor::EVENT_JOURNAL_FLAGS_INDEX],
+                        battery_monitor::EVENT_JOURNAL_TIMESTAMP_VALID_FLAG);
+                    return std::string(valid ? "true" : "false");
+                  soc_valid: !lambda |-
+                    const bool valid = battery_monitor::has_flag(
+                        id(soc_event_journal)[battery_monitor::EVENT_JOURNAL_FLAGS_INDEX],
+                        battery_monitor::EVENT_JOURNAL_SOC_VALID_FLAG);
+                    return std::string(valid ? "true" : "false");
+                  soc_suspect: !lambda |-
+                    const bool suspect = battery_monitor::has_flag(
+                        id(soc_event_journal)[battery_monitor::EVENT_JOURNAL_FLAGS_INDEX],
+                        battery_monitor::EVENT_JOURNAL_SOC_SUSPECT_FLAG);
+                    return std::string(suspect ? "true" : "false");
+                  replay: "true"
+
+  - id: publish_last_soc_event
+    mode: restart
+    then:
+      - text_sensor.template.publish:
+          id: last_soc_event_sequence
+          state: !lambda |-
+            return std::to_string(
+                id(soc_event_journal)[battery_monitor::EVENT_JOURNAL_SEQUENCE_INDEX]);
+      - text_sensor.template.publish:
+          id: last_soc_event_rule
+          state: !lambda |-
+            switch (id(soc_event_journal)[battery_monitor::EVENT_JOURNAL_RULE_CODE_INDEX]) {
+              case 1: return std::string("stop_charge");
+              case 2: return std::string("capacity_warning");
+              case 3: return std::string("stop_load");
+              default: return std::string("none");
+            }
+      - text_sensor.template.publish:
+          id: last_soc_event_direction
+          state: !lambda |-
+            const uint32_t direction = id(soc_event_journal)[
+                battery_monitor::EVENT_JOURNAL_DIRECTION_INDEX];
+            if (direction == battery_monitor::EVENT_DIRECTION_UP) return std::string("up");
+            if (direction == battery_monitor::EVENT_DIRECTION_DOWN) return std::string("down");
+            return std::string("none");
+      - text_sensor.template.publish:
+          id: last_soc_event_unix_time
+          state: !lambda |-
+            if (!battery_monitor::has_flag(
+                    id(soc_event_journal)[battery_monitor::EVENT_JOURNAL_FLAGS_INDEX],
+                    battery_monitor::EVENT_JOURNAL_TIMESTAMP_VALID_FLAG)) {
+              return std::string("unknown");
+            }
+            return std::to_string(id(soc_event_journal)[
+                battery_monitor::EVENT_JOURNAL_EPOCH_SECONDS_INDEX]);
+      - text_sensor.template.publish:
+          id: last_soc_event_delivery
+          state: !lambda |-
+            return id(last_event_delivery_replay) ? std::string("replay") : std::string("live");
+      - sensor.template.publish:
+          id: last_soc_event_value
+          state: !lambda |-
+            return battery_monitor::decode_float(id(soc_event_journal)[
+                battery_monitor::EVENT_JOURNAL_SOC_PERCENT_BITS_INDEX]);
+      - sensor.template.publish:
+          id: last_soc_event_uptime
+          state: !lambda |-
+            return id(soc_event_journal)[
+                battery_monitor::EVENT_JOURNAL_UPTIME_SECONDS_INDEX];
+      - binary_sensor.template.publish:
+          id: last_soc_event_was_valid
+          state: !lambda |-
+            return battery_monitor::has_flag(
+                id(soc_event_journal)[battery_monitor::EVENT_JOURNAL_FLAGS_INDEX],
+                battery_monitor::EVENT_JOURNAL_SOC_VALID_FLAG);
+      - binary_sensor.template.publish:
+          id: last_soc_event_was_suspect
+          state: !lambda |-
+            return battery_monitor::has_flag(
+                id(soc_event_journal)[battery_monitor::EVENT_JOURNAL_FLAGS_INDEX],
+                battery_monitor::EVENT_JOURNAL_SOC_SUSPECT_FLAG);

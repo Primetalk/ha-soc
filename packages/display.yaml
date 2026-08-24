@@ -1,0 +1,79 @@
+# A local OFL font is downloaded into assets/fonts by the repository setup.
+font:
+  - file: assets/fonts/RobotoMono-Variable.ttf
+    id: display_font_small
+    size: 12
+
+  - file: assets/fonts/RobotoMono-Variable.ttf
+    id: display_font_large
+    size: 22
+
+display:
+  - platform: ssd1306_i2c
+    id: battery_display
+    i2c_id: battery_i2c
+    model: "SSD1306 128x64"
+    address: ${oled_address}
+    rotation: ${oled_rotation}
+    update_interval: 500ms
+    lambda: |-
+      const uint8_t page = (millis() / 5000U) % 3U;
+
+      if (!id(measurement_healthy).state) {
+        it.printf(64, 12, id(display_font_small), TextAlign::TOP_CENTER, "SENSOR UNAVAILABLE");
+        it.printf(64, 34, id(display_font_small), TextAlign::TOP_CENTER, "Check INA219/I2C");
+        return;
+      }
+
+      if (page == 0) {
+        const char *flow = id(battery_current).state > ${current_state_deadband_amps}
+                               ? "CHG"
+                               : (id(battery_current).state < -${current_state_deadband_amps}
+                                      ? "LOAD"
+                                      : "IDLE");
+        it.printf(0, 0, id(display_font_small), "BAT %s HA:%s", flow,
+                  id(device_online).state ? "ON" : "off");
+        it.printf(0, 16, id(display_font_large), "%.2fV", id(battery_voltage).state);
+        it.printf(0, 42, id(display_font_small), "%+.2fA  %+.0fW",
+                  id(battery_current).state, id(battery_power).state);
+      } else if (page == 1) {
+        if (!id(soc_valid_live)) {
+          it.printf(64, 8, id(display_font_large), TextAlign::TOP_CENTER, "SOC NOT SET");
+          it.printf(64, 40, id(display_font_small), TextAlign::TOP_CENTER, "Use Set Full/Empty");
+        } else {
+          const float soc = battery_monitor::soc_percent(
+              id(soc_remaining_ah_live), id(rated_capacity_ah).state);
+          it.printf(0, 0, id(display_font_small), "STATE OF CHARGE");
+          it.printf(64, 15, id(display_font_large), TextAlign::TOP_CENTER, "%.1f%%", soc);
+          it.printf(64, 45, id(display_font_small), TextAlign::TOP_CENTER, "%.1f / %.0f Ah",
+                    id(soc_remaining_ah_live), id(rated_capacity_ah).state);
+        }
+      } else {
+        const float soc = battery_monitor::soc_percent(
+            id(soc_remaining_ah_live), id(rated_capacity_ah).state);
+        const bool suspect = battery_monitor::soc_is_suspect(
+            id(soc_valid_live), soc,
+            ${soc_plausible_min_percent}, ${soc_plausible_max_percent});
+        const bool rules_ready = id(soc_rule_engine_ready_live);
+        const char *stop_charge = rules_ready
+            ? (battery_monitor::rule_latch_value(
+                   id(soc_rule_latches),
+                   battery_monitor::RULE_LATCH_STOP_CHARGE_FLAG) ? "ON" : "off")
+            : "n/a";
+        const char *capacity_warning = rules_ready
+            ? (battery_monitor::rule_latch_value(
+                   id(soc_rule_latches),
+                   battery_monitor::RULE_LATCH_CAPACITY_WARNING_FLAG) ? "ON" : "off")
+            : "n/a";
+        const char *stop_load = rules_ready
+            ? (battery_monitor::rule_latch_value(
+                   id(soc_rule_latches),
+                   battery_monitor::RULE_LATCH_STOP_LOAD_FLAG) ? "ON" : "off")
+            : "n/a";
+        it.printf(0, 0, id(display_font_small), "%s HA:%s",
+                  !id(soc_valid_live) ? "NOT SET" : (suspect ? "SUSPECT" : "OK"),
+                  id(device_online).state ? "ON" : "off");
+        it.printf(0, 17, id(display_font_small), "Charge stop: %s", stop_charge);
+        it.printf(0, 32, id(display_font_small), "Warning:     %s", capacity_warning);
+        it.printf(0, 47, id(display_font_small), "Load stop:   %s", stop_load);
+      }

@@ -1,0 +1,30 @@
+# Canonical ESPHome entry point for the battery monitor.
+# User-tunable defaults live in packages/battery-config.yaml.
+
+packages:
+  battery_config: !include packages/battery-config.yaml
+  connectivity: !include packages/connectivity.yaml
+  measurement: !include packages/measurement.yaml
+  soc: !include packages/soc.yaml
+  soc_rules: !include packages/soc-rules.yaml
+  display: !include packages/display.yaml
+
+esphome:
+  name: ${device_name}
+  friendly_name: ${friendly_name}
+  min_version: 2026.8.0
+  includes:
+    - include/battery_monitor_types.h
+  project:
+    name: primetalk.esphome-shunt
+    version: 0.3.0
+
+esp32:
+  board: ${esp32_board}
+  framework:
+    type: arduino
+
+# Runtime settings and checkpoint writes are coalesced to limit flash wear.
+# The SOC live accumulator itself is never written on every measurement sample.
+preferences:
+  flash_write_interval: ${flash_write_interval}

@@ -1,0 +1,322 @@
+globals:
+  # Live state is updated at the current-sensor cadence and never written to
+  # flash directly. The five-word checkpoint is copied at a bounded cadence
+  # and persisted atomically as one ESPHome preference object.
+  - id: soc_remaining_ah_live
+    type: float
+    restore_value: false
+    initial_value: "0.0f"
+
+  - id: soc_valid_live
+    type: bool
+    restore_value: false
+    initial_value: "false"
+
+  - id: soc_checkpoint
+    # Keep this size aligned with SOC_CHECKPOINT_WORDS in the helper header.
+    type: uint32_t[5]
+    restore_value: true
+    initial_value: "{0, 0, 0, 0, 0}"
+    update_interval: ${restored_state_poll_interval}
+
+  - id: last_integration_ms
+    type: uint32_t
+    restore_value: false
+    initial_value: "0"
+
+  - id: discarded_integration_gaps
+    type: uint32_t
+    restore_value: false
+    initial_value: "0"
+
+esphome:
+  on_boot:
+    - priority: -100
+      then:
+        - lambda: |-
+            static_assert(
+                sizeof(id(soc_checkpoint)) / sizeof(id(soc_checkpoint)[0]) ==
+                    battery_monitor::SOC_CHECKPOINT_WORDS,
+                "SOC checkpoint array size does not match its schema");
+            if (battery_monitor::soc_checkpoint_is_valid(id(soc_checkpoint))) {
+              const float checkpoint_remaining_ah = battery_monitor::decode_float(
+                  id(soc_checkpoint)[battery_monitor::SOC_CHECKPOINT_REMAINING_AH_BITS_INDEX]);
+              const float checkpoint_capacity_ah = battery_monitor::decode_float(
+                  id(soc_checkpoint)[battery_monitor::SOC_CHECKPOINT_CAPACITY_AH_BITS_INDEX]);
+              id(soc_remaining_ah_live) = checkpoint_remaining_ah;
+              if (id(rated_capacity_ah).has_state() &&
+                  std::isfinite(id(rated_capacity_ah).state) &&
+                  id(rated_capacity_ah).state > 0.0f) {
+                // Capacity and checkpoint are separate preference objects. By
+                // recording both sides of the ratio, an interrupted flush can
+                // still restore the same unbounded SOC percentage.
+                id(soc_remaining_ah_live) = battery_monitor::rescale_remaining_ah(
+                    id(soc_remaining_ah_live), checkpoint_capacity_ah,
+                    id(rated_capacity_ah).state);
+              }
+              id(soc_valid_live) = battery_monitor::has_flag(
+                  id(soc_checkpoint)[battery_monitor::SOC_CHECKPOINT_FLAGS_INDEX],
+                  battery_monitor::SOC_CHECKPOINT_VALID_FLAG);
+            } else {
+              id(soc_remaining_ah_live) = 0.0f;
+              id(soc_valid_live) = false;
+            }
+            // The first valid current sample establishes the timing baseline.
+            id(last_integration_ms) = 0;
+        - script.execute: publish_soc_state
+        - script.execute: evaluate_soc_rules
+
+  on_shutdown:
+    - priority: 700
+      then:
+        - lambda: |-
+            battery_monitor::store_soc_checkpoint(
+                id(soc_checkpoint), id(soc_remaining_ah_live),
+                id(rated_capacity_ah).has_state() ? id(rated_capacity_ah).state : NAN,
+                id(soc_valid_live));
+
+interval:
+  - interval: ${soc_checkpoint_interval}
+    then:
+      - lambda: |-
+          battery_monitor::store_soc_checkpoint(
+              id(soc_checkpoint), id(soc_remaining_ah_live),
+              id(rated_capacity_ah).has_state() ? id(rated_capacity_ah).state : NAN,
+              id(soc_valid_live));
+
+number:
+  - platform: template
+    name: Rated Battery Capacity
+    id: rated_capacity_ah
+    unit_of_measurement: Ah
+    mode: box
+    min_value: 1
+    max_value: 2000
+    step: 1
+    initial_value: ${rated_capacity_ah_default}
+    restore_value: true
+    optimistic: true
+    set_action:
+      - lambda: |-
+          // TemplateNumber invokes set_action before publishing x, so state is
+          // the old capacity here. Preserve the unbounded SOC percentage.
+          const float old_capacity = id(rated_capacity_ah).state;
+          if (std::isfinite(old_capacity) && old_capacity > 0.0f &&
+              std::isfinite(x) && x > 0.0f &&
+              std::isfinite(id(soc_remaining_ah_live))) {
+            id(soc_remaining_ah_live) = battery_monitor::rescale_remaining_ah(
+                id(soc_remaining_ah_live), old_capacity, x);
+            battery_monitor::store_soc_checkpoint(
+                id(soc_checkpoint), id(soc_remaining_ah_live), x, id(soc_valid_live));
+          }
+    on_value:
+      then:
+        - lambda: id(soc_rules_armed) = false;
+        - script.execute: publish_soc_state
+        - script.execute: evaluate_soc_rules
+
+  - platform: template
+    name: Charging Efficiency
+    id: charge_efficiency_percent
+    unit_of_measurement: "%"
+    mode: box
+    min_value: 80
+    max_value: 100
+    step: 0.1
+    initial_value: ${charge_efficiency_percent_default}
+    restore_value: true
+    optimistic: true
+
+sensor:
+  - platform: template
+    name: State of Charge
+    id: state_of_charge
+    unit_of_measurement: "%"
+    state_class: measurement
+    accuracy_decimals: 2
+    update_interval: never
+
+  - platform: template
+    name: SOC Estimate Unbounded
+    id: soc_estimate_unbounded
+    unit_of_measurement: "%"
+    state_class: measurement
+    accuracy_decimals: 2
+    entity_category: diagnostic
+    update_interval: never
+
+  - platform: template
+    name: Remaining Capacity
+    id: remaining_capacity_ah
+    unit_of_measurement: Ah
+    state_class: measurement
+    accuracy_decimals: 3
+    update_interval: never
+
+  - platform: template
+    name: Discarded Integration Gaps
+    id: discarded_integration_gaps_sensor
+    state_class: total_increasing
+    accuracy_decimals: 0
+    entity_category: diagnostic
+    update_interval: never
+
+binary_sensor:
+  - platform: template
+    name: SOC Valid
+    id: soc_valid
+    entity_category: diagnostic
+
+  - platform: template
+    name: SOC Suspect
+    id: soc_suspect
+    device_class: problem
+    entity_category: diagnostic
+
+text_sensor:
+  - platform: template
+    name: SOC Status
+    id: soc_status
+    entity_category: diagnostic
+    update_interval: never
+
+button:
+  - platform: template
+    name: Set Battery Full
+    id: set_battery_full
+    icon: mdi:battery-plus
+    on_press:
+      then:
+        - lambda: |-
+            if (!id(rated_capacity_ah).has_state() ||
+                !std::isfinite(id(rated_capacity_ah).state) ||
+                id(rated_capacity_ah).state <= 0.0f) {
+              ESP_LOGE("soc", "Cannot set full: rated capacity is invalid");
+              return;
+            }
+            id(soc_remaining_ah_live) = id(rated_capacity_ah).state;
+            id(soc_valid_live) = true;
+            id(last_integration_ms) = millis();
+            battery_monitor::store_soc_checkpoint(
+                id(soc_checkpoint), id(soc_remaining_ah_live),
+                id(rated_capacity_ah).state, true);
+            id(soc_rules_armed) = false;
+            ESP_LOGI("soc", "SOC manually anchored to full");
+        - script.execute: publish_soc_state
+        - script.execute: evaluate_soc_rules
+
+  - platform: template
+    name: Set Battery Empty
+    id: set_battery_empty
+    icon: mdi:battery-minus
+    on_press:
+      then:
+        - lambda: |-
+            id(soc_remaining_ah_live) = 0.0f;
+            id(soc_valid_live) = true;
+            id(last_integration_ms) = millis();
+            battery_monitor::store_soc_checkpoint(
+                id(soc_checkpoint), 0.0f,
+                id(rated_capacity_ah).has_state() ? id(rated_capacity_ah).state : NAN, true);
+            id(soc_rules_armed) = false;
+            ESP_LOGI("soc", "SOC manually anchored to empty");
+        - script.execute: publish_soc_state
+        - script.execute: evaluate_soc_rules
+
+  - platform: template
+    name: Invalidate SOC
+    id: invalidate_soc
+    icon: mdi:battery-alert
+    entity_category: diagnostic
+    on_press:
+      then:
+        - lambda: |-
+            id(soc_valid_live) = false;
+            battery_monitor::store_soc_checkpoint(
+                id(soc_checkpoint), id(soc_remaining_ah_live),
+                id(rated_capacity_ah).has_state() ? id(rated_capacity_ah).state : NAN, false);
+            id(soc_rules_armed) = false;
+            ESP_LOGW("soc", "SOC manually invalidated; estimate remains visible for diagnostics");
+        - script.execute: publish_soc_state
+        - script.execute: evaluate_soc_rules
+
+script:
+  - id: integrate_soc_sample
+    mode: restart
+    parameters:
+      current_a: float
+    then:
+      - lambda: |-
+          const uint32_t now = millis();
+          const uint32_t previous = id(last_integration_ms);
+          id(last_integration_ms) = now;
+
+          if (previous == 0) return;
+          const uint32_t elapsed_ms = now - previous;  // Rollover-safe.
+          if (elapsed_ms == 0 || elapsed_ms > ${soc_max_sample_gap_ms}) {
+            id(discarded_integration_gaps)++;
+            ESP_LOGW("soc", "Discarded integration gap of %lu ms",
+                     static_cast<unsigned long>(elapsed_ms));
+            return;
+          }
+          if (!std::isfinite(current_a) ||
+              !id(charge_efficiency_percent).has_state() ||
+              !std::isfinite(id(charge_efficiency_percent).state)) {
+            return;
+          }
+
+          id(soc_remaining_ah_live) = battery_monitor::integrate_remaining_ah(
+              id(soc_remaining_ah_live), current_a,
+              id(charge_efficiency_percent).state, elapsed_ms);
+      - script.execute: publish_soc_state
+      - script.execute: evaluate_soc_rules
+
+  - id: publish_soc_state
+    mode: restart
+    then:
+      - sensor.template.publish:
+          id: remaining_capacity_ah
+          state: !lambda return id(soc_remaining_ah_live);
+      - lambda: |-
+          const float soc = id(rated_capacity_ah).has_state()
+              ? battery_monitor::soc_percent(
+                    id(soc_remaining_ah_live), id(rated_capacity_ah).state)
+              : NAN;
+          if (std::isfinite(soc)) {
+            id(soc_estimate_unbounded).publish_state(soc);
+          } else {
+            battery_monitor::invalidate_sensor_state(id(soc_estimate_unbounded));
+          }
+          if (id(soc_valid_live) && std::isfinite(soc)) {
+            id(state_of_charge).publish_state(soc);
+          } else {
+            battery_monitor::invalidate_sensor_state(id(state_of_charge));
+          }
+      - sensor.template.publish:
+          id: discarded_integration_gaps_sensor
+          state: !lambda return id(discarded_integration_gaps);
+      - binary_sensor.template.publish:
+          id: soc_valid
+          state: !lambda return id(soc_valid_live);
+      - binary_sensor.template.publish:
+          id: soc_suspect
+          state: !lambda |-
+            if (!id(rated_capacity_ah).has_state()) return false;
+            const float soc = battery_monitor::soc_percent(
+                id(soc_remaining_ah_live), id(rated_capacity_ah).state);
+            return battery_monitor::soc_is_suspect(
+                id(soc_valid_live), soc,
+                ${soc_plausible_min_percent}, ${soc_plausible_max_percent});
+      - text_sensor.template.publish:
+          id: soc_status
+          state: !lambda |-
+            if (!id(soc_valid_live)) return std::string("not_set");
+            if (!id(rated_capacity_ah).has_state()) return std::string("configuration_error");
+            const float soc = battery_monitor::soc_percent(
+                id(soc_remaining_ah_live), id(rated_capacity_ah).state);
+            if (!std::isfinite(soc)) return std::string("configuration_error");
+            if (battery_monitor::soc_is_suspect(
+                    true, soc, ${soc_plausible_min_percent}, ${soc_plausible_max_percent})) {
+              return std::string("suspect");
+            }
+            return std::string("valid");

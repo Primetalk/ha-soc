@@ -1,0 +1,79 @@
+logger:
+  level: INFO
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  power_save_mode: light
+  # Continue local measurement and rule evaluation during a network outage.
+  reboot_timeout: 0s
+  ap:
+    ssid: "${friendly_name} Setup"
+    password: !secret fallback_ap_password
+
+captive_portal:
+
+api:
+  encryption:
+    key: !secret api_encryption_key
+  # Continue operating if Home Assistant is unavailable.
+  reboot_timeout: 0s
+  on_client_connected:
+    then:
+      # Entity state is authoritative. Replay the latest journal record so a
+      # reconnecting Home Assistant can reconcile and deduplicate by sequence.
+      - delay: 2s
+      - script.execute: replay_last_soc_rule_event
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+time:
+  - platform: sntp
+    id: system_time
+    timezone: UTC
+
+sensor:
+  - platform: wifi_signal
+    name: Wi-Fi Signal
+    id: wifi_signal_db
+    update_interval: 60s
+    entity_category: diagnostic
+
+  - platform: uptime
+    name: Uptime
+    id: device_uptime
+    update_interval: 60s
+    entity_category: diagnostic
+
+text_sensor:
+  - platform: version
+    name: ESPHome Version
+    entity_category: diagnostic
+
+  - platform: wifi_info
+    ip_address:
+      name: IP Address
+      entity_category: diagnostic
+    ssid:
+      name: Connected SSID
+      entity_category: diagnostic
+    mac_address:
+      name: Wi-Fi MAC Address
+      entity_category: diagnostic
+
+binary_sensor:
+  - platform: status
+    name: Device Online
+    id: device_online
+    entity_category: diagnostic
+
+button:
+  - platform: restart
+    name: Restart
+    entity_category: diagnostic
+
+  - platform: safe_mode
+    name: Restart in Safe Mode
+    entity_category: diagnostic

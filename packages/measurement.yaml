@@ -1,0 +1,189 @@
+i2c:
+  id: battery_i2c
+  sda: ${i2c_sda_pin}
+  scl: ${i2c_scl_pin}
+  frequency: ${i2c_frequency}
+  scan: true
+
+globals:
+  - id: last_measurement_ms
+    type: uint32_t
+    restore_value: false
+    initial_value: "0"
+
+sensor:
+  - platform: ina219
+    id: ina219_monitor
+    i2c_id: battery_i2c
+    address: ${ina219_address}
+    shunt_resistance: ${shunt_resistance}
+    max_current: ${shunt_max_current}
+    max_voltage: ${ina219_max_bus_voltage}
+    update_interval: ${measurement_update_interval}
+
+    bus_voltage:
+      name: Battery Voltage
+      id: battery_voltage
+      accuracy_decimals: 3
+      filters:
+        - lambda: |-
+            if (!std::isfinite(x)) return {};
+            return x;
+
+    shunt_voltage:
+      name: INA219 Shunt Voltage
+      id: ina219_shunt_voltage_raw
+      accuracy_decimals: 6
+      entity_category: diagnostic
+      disabled_by_default: true
+      filters:
+        - lambda: |-
+            if (!std::isfinite(x)) return {};
+            return x;
+
+    current:
+      name: INA219 Raw Current
+      id: ina219_current_raw
+      accuracy_decimals: 3
+      entity_category: diagnostic
+      disabled_by_default: true
+      filters:
+        - lambda: |-
+            if (!std::isfinite(x)) return {};
+            return x;
+      on_value:
+        then:
+          - lambda: id(last_measurement_ms) = millis();
+          - sensor.template.publish:
+              id: battery_current
+              state: !lambda return x * ${current_polarity_multiplier};
+          - lambda: |-
+              if (!id(battery_voltage).has_state() ||
+                  !std::isfinite(id(battery_voltage).state)) {
+                battery_monitor::invalidate_sensor_state(id(battery_power));
+              } else {
+                id(battery_power).publish_state(
+                    id(battery_voltage).state * x * ${current_polarity_multiplier});
+              }
+          - binary_sensor.template.publish:
+              id: battery_charging
+              state: !lambda return x * ${current_polarity_multiplier} > ${current_state_deadband_amps};
+          - binary_sensor.template.publish:
+              id: battery_discharging
+              state: !lambda return x * ${current_polarity_multiplier} < -${current_state_deadband_amps};
+          - binary_sensor.template.publish:
+              id: battery_idle
+              state: !lambda |-
+                return std::abs(x * ${current_polarity_multiplier}) <=
+                       ${current_state_deadband_amps};
+          - script.execute:
+              id: integrate_soc_sample
+              current_a: !lambda return x * ${current_polarity_multiplier};
+
+    power:
+      name: INA219 Raw Power
+      id: ina219_power_raw
+      accuracy_decimals: 2
+      entity_category: diagnostic
+      disabled_by_default: true
+      filters:
+        - lambda: |-
+            if (!std::isfinite(x)) return {};
+            return x;
+
+  - platform: template
+    name: Battery Current
+    id: battery_current
+    unit_of_measurement: A
+    device_class: current
+    state_class: measurement
+    accuracy_decimals: 3
+    update_interval: never
+
+  - platform: template
+    name: Battery Power
+    id: battery_power
+    unit_of_measurement: W
+    device_class: power
+    state_class: measurement
+    accuracy_decimals: 1
+    update_interval: never
+
+  - platform: template
+    name: Shunt Voltage
+    id: shunt_voltage_mv
+    unit_of_measurement: mV
+    device_class: voltage
+    state_class: measurement
+    accuracy_decimals: 3
+    entity_category: diagnostic
+    update_interval: 2s
+    lambda: |-
+      if (!id(ina219_shunt_voltage_raw).has_state() ||
+          !std::isfinite(id(ina219_shunt_voltage_raw).state)) {
+        return {};
+      }
+      return id(ina219_shunt_voltage_raw).state * 1000.0f;
+
+binary_sensor:
+  - platform: template
+    name: Battery Charging
+    id: battery_charging
+    device_class: battery_charging
+    filters:
+      - delayed_on: 2s
+      - delayed_off: 2s
+
+  - platform: template
+    name: Battery Discharging
+    id: battery_discharging
+    filters:
+      - delayed_on: 2s
+      - delayed_off: 2s
+
+  - platform: template
+    name: Battery Idle
+    id: battery_idle
+    filters:
+      - delayed_on: 2s
+      - delayed_off: 2s
+
+  - platform: template
+    name: Measurement Healthy
+    id: measurement_healthy
+    entity_category: diagnostic
+    lambda: |-
+      if (id(last_measurement_ms) == 0 ||
+          (uint32_t) (millis() - id(last_measurement_ms)) > ${measurement_stale_after_ms}) {
+        return false;
+      }
+      return id(battery_voltage).has_state() &&
+             id(battery_current).has_state() &&
+             std::isfinite(id(battery_voltage).state) &&
+             std::isfinite(id(battery_current).state);
+
+interval:
+  - interval: 1s
+    then:
+      - if:
+          condition:
+            lambda: |-
+              return id(last_measurement_ms) != 0 &&
+                     (uint32_t) (millis() - id(last_measurement_ms)) >
+                         ${measurement_stale_after_ms} &&
+                     (id(battery_current).has_state() || id(battery_voltage).has_state());
+          then:
+            # Do not leave stale values looking current in Home Assistant.
+            - lambda: |-
+                battery_monitor::invalidate_sensor_state(id(battery_voltage));
+                battery_monitor::invalidate_sensor_state(id(battery_current));
+                battery_monitor::invalidate_sensor_state(id(battery_power));
+                battery_monitor::invalidate_sensor_state(id(ina219_current_raw));
+                battery_monitor::invalidate_sensor_state(id(ina219_power_raw));
+                battery_monitor::invalidate_sensor_state(id(ina219_shunt_voltage_raw));
+                battery_monitor::invalidate_sensor_state(id(shunt_voltage_mv));
+                id(battery_charging).invalidate_state();
+                id(battery_discharging).invalidate_state();
+                id(battery_idle).invalidate_state();
+                ESP_LOGW("measurement", "INA219 measurements became stale");
+            - script.execute: evaluate_soc_rules

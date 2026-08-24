@@ -1,0 +1,67 @@
+# =============================================================================
+# BATTERY AND HARDWARE CONFIGURATION
+# =============================================================================
+# This is the primary section to review before flashing a different installation.
+# Runtime-editable values (capacity, efficiency, rule levels, and hysteresis) are
+# exposed to Home Assistant and restored by ESPHome. Hardware-defining values are
+# compile-time substitutions and require a firmware rebuild.
+
+substitutions:
+  # Device identity
+  device_name: battery-monitor
+  friendly_name: Battery Monitor
+  esp32_board: esp32-c3-devkitm-1
+
+  # Descriptive battery defaults. Firmware does not use these as BMS limits.
+  battery_profile: 4S LiFePO4
+  rated_capacity_ah_default: "300.0"
+  charge_efficiency_percent_default: "99.0"
+
+  # External shunt: 75 mV / 500 A = 0.00015 ohm.
+  shunt_rating_amps: "500"
+  shunt_rating_millivolts: "75"
+  shunt_resistance: "0.00015 ohm"
+  shunt_max_current: "500 A"
+  ina219_max_bus_voltage: "32 V"
+
+  # With the documented high-side wiring, raw INA219 charging current is
+  # positive. Change this to -1.0 only if a verified installation reads with
+  # the opposite sign. All public entities always use positive = charging.
+  current_polarity_multiplier: "1.0"
+
+  # I2C hardware defaults for ESP32-C3 DevKitM-1.
+  i2c_sda_pin: GPIO8
+  i2c_scl_pin: GPIO9
+  i2c_frequency: 400kHz
+  ina219_address: "0x40"
+  oled_address: "0x3C"
+  oled_rotation: "180"
+
+  # Measurement and integration timing.
+  measurement_update_interval: 1s
+  measurement_stale_after_ms: "5000"
+  soc_max_sample_gap_ms: "10000"
+  soc_checkpoint_interval: 60s
+  current_state_deadband_amps: "0.20"
+
+  # An unbounded SOC outside this range remains visible but is marked suspect.
+  soc_plausible_min_percent: "-10.0"
+  soc_plausible_max_percent: "110.0"
+
+  # Rules are reconstructed without events during this boot window.
+  rule_startup_suppression: 15s
+
+  # Persistence: event/latch records poll for changes every second and physical
+  # flash commits are coalesced. SOC itself is checkpointed at the separate
+  # interval above, so a sudden outage can lose approximately that interval
+  # plus the poll/coalescing delay. Graceful shutdown also stages a checkpoint.
+  restored_state_poll_interval: 1s
+  flash_write_interval: 5s
+
+  # Default runtime-editable rule settings.
+  stop_charge_level_default: "95.0"
+  stop_charge_hysteresis_default: "2.0"
+  capacity_warning_level_default: "40.0"
+  capacity_warning_hysteresis_default: "2.0"
+  stop_load_level_default: "30.0"
+  stop_load_hysteresis_default: "2.0"
