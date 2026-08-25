@@ -1,0 +1,69 @@
+name: Hardware schematic
+
+on:
+  push:
+    paths:
+      - "hardware/battery-monitor-schematic.tex"
+      - ".github/workflows/hardware-schematic.yaml"
+  pull_request:
+    paths:
+      - "hardware/battery-monitor-schematic.tex"
+      - ".github/workflows/hardware-schematic.yaml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hardware-schematic-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  render-svg:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install CircuitikZ toolchain
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            dvisvgm \
+            ghostscript \
+            latexmk \
+            texlive-fonts-recommended \
+            texlive-latex-base \
+            texlive-latex-extra \
+            texlive-pictures
+
+      - name: Render SVG
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/schematic
+          latexmk \
+            -dvi \
+            -interaction=nonstopmode \
+            -halt-on-error \
+            -file-line-error \
+            -outdir=build/schematic \
+            hardware/battery-monitor-schematic.tex
+          dvisvgm \
+            --no-fonts \
+            --exact \
+            --output=build/schematic/battery-monitor-schematic.svg \
+            build/schematic/battery-monitor-schematic.dvi
+          test -s build/schematic/battery-monitor-schematic.svg
+
+      - name: Upload rendered SVG
+        uses: actions/upload-artifact@v4
+        with:
+          name: battery-monitor-schematic-svg
+          path: build/schematic/battery-monitor-schematic.svg
+          if-no-files-found: error
+          retention-days: 30

@@ -25,6 +25,9 @@ EXPECTED_PACKAGES = {
 REQUIRED_PATHS = {
     ".gitignore",
     ".github/workflows/esphome.yaml",
+    ".github/workflows/hardware-schematic.yaml",
+    "CONTRIBUTING.md",
+    "Taskfile.yml",
     "battery-monitor.yaml",
     "secrets.example.yaml",
     "include/battery_monitor_types.h",
@@ -32,6 +35,10 @@ REQUIRED_PATHS = {
     "assets/fonts/OFL.txt",
     "docs/home-assistant.md",
     "docs/commissioning.md",
+    "docs/fuse-selection.md",
+    "hardware/battery-monitor-schematic.tex",
+    "hardware/battery-monitor-schematic.svg",
+    "scripts/render-schematic.sh",
     "tests/battery_monitor_helpers_test.cpp",
     "tests/validate_repository.py",
 }
@@ -107,6 +114,22 @@ def check_required_paths(checks: Checks) -> None:
         checks.require(path.is_file(), f"required file is absent: {relative_path}")
         if path.is_file():
             checks.require(path.stat().st_size > 0, f"required file is empty: {relative_path}")
+
+
+def check_renderer_tooling(checks: Checks) -> None:
+    renderer = ROOT / "scripts/render-schematic.sh"
+    if renderer.is_file():
+        checks.require(
+            bool(renderer.stat().st_mode & 0o111),
+            "schematic renderer is not executable: scripts/render-schematic.sh",
+        )
+
+    workflow = ROOT / ".github/workflows/hardware-schematic.yaml"
+    if workflow.is_file():
+        checks.require(
+            "./scripts/render-schematic.sh --check" in workflow.read_text(encoding="utf-8"),
+            "hardware schematic workflow does not invoke the canonical renderer in check mode",
+        )
 
 
 def check_canonical_composition(checks: Checks) -> None:
@@ -291,7 +314,13 @@ def check_ignore_policy(checks: Checks) -> None:
 
 
 def check_markdown_fences(checks: Checks) -> None:
-    for relative_path in ("README.md", "docs/home-assistant.md", "docs/commissioning.md"):
+    for relative_path in (
+        "README.md",
+        "CONTRIBUTING.md",
+        "docs/home-assistant.md",
+        "docs/commissioning.md",
+        "docs/fuse-selection.md",
+    ):
         fence_count = sum(
             1 for line in read_text(relative_path).splitlines() if line.startswith("```")
         )
@@ -304,6 +333,7 @@ def check_markdown_fences(checks: Checks) -> None:
 def main() -> int:
     checks = Checks()
     check_required_paths(checks)
+    check_renderer_tooling(checks)
     check_canonical_composition(checks)
     check_secrets_fixture(checks)
     check_yaml_credentials(checks)

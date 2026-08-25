@@ -28,7 +28,7 @@ This project started based on https://github.com/jurgen2005/esphome-shunt.
 | Item                      | Default                                              |
 | ------------------------- | ---------------------------------------------------- |
 | Battery profile           | 4S LiFePO4, 300 Ah rated capacity                    |
-| Controller                | ESP32-C3 DevKitM-1                                   |
+| Controller                | ESP32-C3 SuperMini                                   |
 | Current/voltage monitor   | INA219 breakout, onboard shunt electrically isolated |
 | External shunt            | 500 A / 75 mV                                        |
 | External shunt resistance | `0.075 V / 500 A = 0.00015 ohm`                      |
@@ -41,6 +41,13 @@ This project started based on https://github.com/jurgen2005/esphome-shunt.
 Hardware and battery defaults are centralized in
 [`packages/battery-config.yaml`](packages/battery-config.yaml). Review that file
 before flashing a different installation.
+
+The physical controller is an ESP32-C3 SuperMini. ESPHome uses the compatible
+generic `esp32-c3-devkitm-1` board profile because SuperMini variants generally
+do not have a dedicated PlatformIO board definition. Confirm the flash size,
+USB mode, regulator/input pin, GPIO labels, and schematic for the exact board
+revision before assembly; SuperMini-branded boards are not guaranteed to share
+one layout.
 
 ## Safety boundary
 
@@ -66,6 +73,48 @@ personal protective equipment appropriate to the installation; obtain help
 from a qualified professional when required.
 
 ## High-side wiring
+
+### Planned hardware schematic
+
+[![Planned ESPHome high-side battery monitor schematic](hardware/battery-monitor-schematic.svg)](hardware/battery-monitor-schematic.svg)
+
+The editable [CircuitikZ source](hardware/battery-monitor-schematic.tex) is the
+source of truth for the diagram; the checked-in
+[SVG rendering](hardware/battery-monitor-schematic.svg) is provided for GitHub
+and other documentation viewers. The diagram covers the stabilization hardware
+only. Future contactor drivers, alternate current monitors, and precision
+voltage channels from the evolution plan are intentionally omitted.
+
+Functional boards are rendered as reusable module symbols with explicit named
+boundary ports rather than misleading DIP/QFP package outlines. The generated
+SVG also includes an opaque canvas fitted to the complete diagram bounding box,
+including edge labels, so it remains legible on both light and dark themes.
+
+This is an electrical connection schematic, not a PCB, enclosure, cable-sizing,
+fuse-selection, or physical-placement drawing. In particular:
+
+- the red path is the high-current path, which passes through only the external
+  shunt and appropriately rated protection/conductors;
+- `F1` and `F2` are separate thin-wire protection devices mounted close to the
+  two energized Kelvin taps;
+- the INA219 breakout's onboard differential shunt is electrically isolated;
+- `F3` protects the nominal `+12 V` input to the monitor's DC/DC supply, taken
+  from the measured bus side so monitor consumption is included in discharge
+  current;
+- the regulated `+3V3` lane supplies the INA219, ESP32-C3, and OLED; its bridge
+  symbols cross the two Kelvin leads without connecting to them;
+- SDA and SCL remain separate electrical nets inside one shared, multidrop I2C
+  bus; each module connects to that bus rather than to another module;
+- all ground symbols are the common battery-negative reference in this
+  non-isolated design.
+
+See the [fuse-selection guide](docs/fuse-selection.md) before choosing parts.
+Its provisional starting points are `0.5 A` fast-acting for each Kelvin lead
+(`F1`/`F2`) and `1 A` time-delay for the monitor-supply input (`F3`), but only
+after wire ampacity, temperature/inrush derating, maximum DC voltage, and
+prospective battery fault current have been verified against the fuse **and
+holder** datasheets. `F_MAIN` has no project default; the shunt's `500 A` range
+and the battery's `300 Ah` capacity are not fuse-sizing values.
 
 ### Main current path
 
@@ -160,9 +209,7 @@ I2C to suitable non-strapping pins in
 | [`packages/display.yaml`](packages/display.yaml)                     | SSD1306 pages                                                        |
 | [`include/battery_monitor_types.h`](include/battery_monitor_types.h) | Fixed-record persistence and rule helpers                            |
 | [`assets/fonts/`](assets/fonts/)                                     | Vendored Roboto Mono font and OFL license                            |
-| [`tests/battery_monitor_helpers_test.cpp`](tests/battery_monitor_helpers_test.cpp) | Deterministic host tests for production helpers         |
-| [`tests/validate_repository.py`](tests/validate_repository.py)       | Clean-checkout, asset, fixture, credential, and Markdown checks       |
-| [`.github/workflows/esphome.yaml`](.github/workflows/esphome.yaml)   | Pinned clean-checkout validation and ESP32-C3 compilation            |
+| [`docs/fuse-selection.md`](docs/fuse-selection.md)                 | Fuse parameters, provisional targets, calculations, and selection record     |
 
 The three `shunt*.yaml` files are obsolete prototypes retained only until the
 canonical firmware completes hardware acceptance. Do not use them for a new
@@ -206,22 +253,6 @@ esphome compile battery-monitor.yaml
 
 GPIO8/GPIO9 strapping warnings are expected with the default pin assignment;
 compiler warnings or missing includes/assets are not.
-
-Run the deterministic repository and production-helper checks locally:
-
-```sh
-python3 tests/validate_repository.py
-c++ -std=c++17 -Wall -Wextra -Wpedantic -Werror -I. \
-  tests/battery_monitor_helpers_test.cpp -o /tmp/battery-monitor-helper-tests
-/tmp/battery-monitor-helper-tests
-rm -f /tmp/battery-monitor-helper-tests
-```
-
-The GitHub Actions workflow repeats both checks from a clean checkout, copies
-the valid-shaped example to private `secrets.yaml`, installs exactly ESPHome
-2026.8.0, validates the canonical configuration, and compiles the default
-ESP32-C3 target. It rejects compiler diagnostics while allowing the separately
-documented GPIO8/GPIO9 configuration warnings.
 
 ## Flash and update
 
@@ -339,3 +370,6 @@ automations are documented in
 - [`plans/02-evolution-plan.md`](plans/02-evolution-plan.md) covers calibration,
   qualified endpoints, capacity learning, improved measurement hardware, and
   future fail-safe local contactor control.
+
+Repository checks, development tooling, schematic generation, and contribution
+workflow are documented separately in [`CONTRIBUTING.md`](CONTRIBUTING.md).

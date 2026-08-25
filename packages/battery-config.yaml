@@ -29,7 +29,9 @@ substitutions:
   # the opposite sign. All public entities always use positive = charging.
   current_polarity_multiplier: "1.0"
 
-  # I2C hardware defaults for ESP32-C3 DevKitM-1.
+  # I2C hardware defaults for the ESP32-C3 SuperMini hardware. The generic
+  # esp32-c3-devkitm-1 build profile above is intentionally retained because it
+  # is compatible with common SuperMini variants.
   i2c_sda_pin: GPIO8
   i2c_scl_pin: GPIO9
   i2c_frequency: 400kHz
