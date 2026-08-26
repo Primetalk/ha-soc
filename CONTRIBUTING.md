@@ -74,7 +74,7 @@ from any current directory. It renders through DVI with
 under `build/schematic/`, rejects incomplete PostScript-special conversion, and
 atomically replaces the committed SVG only after successful rendering.
 
-On macOS the script adds the standard MacTeX binary directory to `PATH` and
+On macOS the script uses the standard MacTeX binary directory as a fallback and
 discovers Homebrew Ghostscript automatically. Set `DVISVGM_LIBGS` when another
 Ghostscript shared library must be used:
 

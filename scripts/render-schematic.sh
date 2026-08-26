@@ -57,8 +57,13 @@ if (( $# > 1 )); then
   die "expected at most one argument"
 fi
 
-# VS Code and other GUI processes on macOS may not inherit MacTeX's path.
-if [[ -d /Library/TeX/texbin ]]; then
+# VS Code and other GUI processes on macOS may not inherit MacTeX's path. Keep
+# an explicitly configured TeX toolchain first unless a required command is
+# missing.
+if [[ -d /Library/TeX/texbin ]] &&
+  { ! command -v latexmk >/dev/null 2>&1 ||
+    ! command -v dvisvgm >/dev/null 2>&1 ||
+    ! command -v kpsewhich >/dev/null 2>&1; }; then
   export PATH="/Library/TeX/texbin:${PATH}"
 fi
 

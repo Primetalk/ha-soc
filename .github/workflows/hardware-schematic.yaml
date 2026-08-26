@@ -4,10 +4,14 @@ on:
   push:
     paths:
       - "hardware/battery-monitor-schematic.tex"
+      - "hardware/battery-monitor-schematic.svg"
+      - "scripts/render-schematic.sh"
       - ".github/workflows/hardware-schematic.yaml"
   pull_request:
     paths:
       - "hardware/battery-monitor-schematic.tex"
+      - "hardware/battery-monitor-schematic.svg"
+      - "scripts/render-schematic.sh"
       - ".github/workflows/hardware-schematic.yaml"
   workflow_dispatch:
 
@@ -41,24 +45,9 @@ jobs:
             texlive-latex-extra \
             texlive-pictures
 
-      - name: Render SVG
+      - name: Verify committed SVG
         shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p build/schematic
-          latexmk \
-            -dvi \
-            -interaction=nonstopmode \
-            -halt-on-error \
-            -file-line-error \
-            -outdir=build/schematic \
-            hardware/battery-monitor-schematic.tex
-          dvisvgm \
-            --no-fonts \
-            --exact \
-            --output=build/schematic/battery-monitor-schematic.svg \
-            build/schematic/battery-monitor-schematic.dvi
-          test -s build/schematic/battery-monitor-schematic.svg
+        run: ./scripts/render-schematic.sh --check
 
       - name: Upload rendered SVG
         uses: actions/upload-artifact@v4
