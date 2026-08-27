@@ -28,7 +28,7 @@ This project started based on https://github.com/jurgen2005/esphome-shunt.
 | Item                      | Default                                              |
 | ------------------------- | ---------------------------------------------------- |
 | Battery profile           | 4S LiFePO4, 300 Ah rated capacity                    |
-| Controller                | ESP32-C3 DevKitM-1                                   |
+| Controller                | ESP32-C3 SuperMini                                   |
 | Current/voltage monitor   | INA219 breakout, onboard shunt electrically isolated |
 | External shunt            | 500 A / 75 mV                                        |
 | External shunt resistance | `0.075 V / 500 A = 0.00015 ohm`                      |
@@ -41,6 +41,13 @@ This project started based on https://github.com/jurgen2005/esphome-shunt.
 Hardware and battery defaults are centralized in
 [`packages/battery-config.yaml`](packages/battery-config.yaml). Review that file
 before flashing a different installation.
+
+The physical controller is an ESP32-C3 SuperMini. ESPHome uses the compatible
+generic `esp32-c3-devkitm-1` board profile because SuperMini variants generally
+do not have a dedicated PlatformIO board definition. Confirm the flash size,
+USB mode, regulator/input pin, GPIO labels, and schematic for the exact board
+revision before assembly; SuperMini-branded boards are not guaranteed to share
+one layout.
 
 ## Safety boundary
 
@@ -65,7 +72,133 @@ can deliver destructive fault current. Use components, fuses, procedures, and
 personal protective equipment appropriate to the installation; obtain help
 from a qualified professional when required.
 
-## High-side wiring
+## System installation overview
+
+[![Conceptual 4S battery, charger, inverter, and ATS installation overview](hardware/battery-system-installation.svg)](hardware/battery-system-installation.svg)
+
+The editable
+[CircuitikZ source](hardware/battery-system-installation.tex) and checked-in
+[SVG rendering](hardware/battery-system-installation.svg) show how the SOC
+monitor fits into one possible battery-backed AC system. The overview includes
+four individual 1S cells (`BT1`-`BT4`), a common-port low-side 4S BMS, all five
+independent balance taps, the external shunt, `F_MAIN`, protected DC buses, a
+CC/CV charger, an inverter, mains sensing, an ATS, Home Assistant, and the SOC
+monitor as one module.
+
+The high-current topology shown is:
+
+```text
+battery B+ -> external shunt -> F_MAIN -> protected DC+ bus
+battery B- -> BMS B-
+BMS P-     -> protected DC- bus
+```
+
+The charger and inverter connect only to the protected system buses. The five
+BMS balance conductors (`B-`, `B1`, `B2`, `B3`, and `B+`) are individually
+traceable in the drawing and must not be electrically joined merely because
+they are routed as one harness.
+
+This is a **conceptual single-line overview**, not a construction-ready wiring
+plan. It does not specify cable or bus-bar ampacity, fault-current withstand,
+fuse and breaker ratings, isolation, earthing, neutral switching, enclosure
+layout, disconnects, equipment approvals, or code compliance. Those details
+require installation-specific engineering and appropriately qualified review.
+
+### SOC-monitor installation conductors
+
+Exactly four implemented conductors cross the SOC-monitor boundary:
+
+| Logical ID | Monitor connection | Installation connection                      | Role                               |
+| ---------- | ------------------ | -------------------------------------------- | ---------------------------------- |
+| `K_BUS`    | `VIN+`             | Bus-side shunt Kelvin point through `F1`     | Dedicated positive-side sense lead |
+| `K_BAT`    | `VIN-`             | Battery-side shunt Kelvin point through `F2` | Dedicated battery-side sense lead  |
+| `VMON+`    | `+12V IN`          | Protected DC+ bus through `F3`               | Monitor supply input               |
+| `GND`      | `P- ref`           | Protected DC- bus / BMS `P-`                 | Non-isolated monitor reference     |
+
+`F1` and `F2` protect thin Kelvin leads; `F3` protects the monitor supply.
+Keep all three paths electrically separate. In particular, never use a Kelvin
+lead to carry DC/DC supply current: lead and fuse voltage drop would bias the
+shunt measurement.
+
+### Intentional reversed ATS sequence
+
+The overview intentionally assigns the ATS inputs as `NORMAL = inverter` and
+`RESERVE = mains`. This is not the conventional label assignment. The required
+sequence is:
+
+1. **Mains available:** the mains-sensing relay is energized, its normally
+   closed dry contact is open, the inverter is disabled, and the ATS supplies
+   the load from available `RESERVE` mains.
+2. **Mains missing:** the sensing relay drops out, its NC contact closes, the
+   inverter starts, and the ATS transfers to available `NORMAL` inverter
+   output.
+3. **Mains restored:** the relay energizes, the NC contact opens, the inverter
+   stops, and the ATS returns to `RESERVE` mains.
+
+Use only an appropriately rated, mechanically/electrically interlocked
+break-before-make ATS. The dashed delay/anti-chatter timer is a possible future
+addition for unstable mains. Transfer interruption depends on the ATS,
+inverter, sensing, and timing behavior; this design does **not** promise a
+seamless or UPS-grade transfer.
+
+### Charger-control status
+
+The current firmware publishes its charge-stop condition through ESPHome and
+Home Assistant. The implemented automation path is Home Assistant commanding a
+Wi-Fi smart plug or equivalent suitably rated AC control relay. This path
+depends on Wi-Fi, Home Assistant, and the controlled device, so it supplements
+rather than replaces charger and BMS protection.
+
+The dashed `CHARGER_ENABLE` route is a future alternative: a not-yet-implemented
+monitor output would operate an isolated low-energy relay connected to a
+charger enable input. It is **not present in the current hardware or firmware**,
+and it must not be interpreted as a second simultaneous command path.
+
+## High-side SOC monitor wiring
+
+### Companion monitor schematic
+
+[![Planned ESPHome high-side battery monitor schematic](hardware/battery-monitor-schematic.svg)](hardware/battery-monitor-schematic.svg)
+
+The editable [CircuitikZ source](hardware/battery-monitor-schematic.tex) is the
+source of truth for this detailed companion drawing; the checked-in
+[SVG rendering](hardware/battery-monitor-schematic.svg) is provided for GitHub
+and other documentation viewers. Unlike the system overview, this drawing
+shows the internal monitor connections among the protected supply, INA219
+breakout, ESP32-C3, and OLED. Future contactor drivers, alternate current
+monitors, and precision voltage channels from the evolution plan are
+intentionally omitted.
+
+Functional boards are rendered as reusable module symbols with explicit named
+boundary ports rather than misleading DIP/QFP package outlines. The generated
+SVG also includes an opaque canvas fitted to the complete diagram bounding box,
+including edge labels, so it remains legible on both light and dark themes.
+
+This is an electrical connection schematic, not a PCB, enclosure, cable-sizing,
+fuse-selection, or physical-placement drawing. In particular:
+
+- the red path is the high-current path, which passes through only the external
+  shunt and appropriately rated protection/conductors;
+- `F1` and `F2` are separate thin-wire protection devices mounted close to the
+  two energized Kelvin taps;
+- the INA219 breakout's onboard differential shunt is electrically isolated;
+- `F3` protects the nominal `+12 V` input to the monitor's DC/DC supply, taken
+  from the measured bus side so monitor consumption is included in discharge
+  current;
+- the regulated `+3V3` lane supplies the INA219, ESP32-C3, and OLED; its bridge
+  symbols cross the two Kelvin leads without connecting to them;
+- SDA and SCL remain separate electrical nets inside one shared, multidrop I2C
+  bus; each module connects to that bus rather than to another module;
+- all ground symbols are the common battery-negative reference in this
+  non-isolated design.
+
+See the [fuse-selection guide](docs/fuse-selection.md) before choosing parts.
+Its provisional starting points are `0.5 A` fast-acting for each Kelvin lead
+(`F1`/`F2`) and `1 A` time-delay for the monitor-supply input (`F3`), but only
+after wire ampacity, temperature/inrush derating, maximum DC voltage, and
+prospective battery fault current have been verified against the fuse **and
+holder** datasheets. `F_MAIN` has no project default; the shunt's `500 A` range
+and the battery's `300 Ah` capacity are not fuse-sizing values.
 
 ### Main current path
 
@@ -149,20 +282,18 @@ I2C to suitable non-strapping pins in
 
 ## Firmware layout
 
-| Path                                                                 | Purpose                                                              |
-| -------------------------------------------------------------------- | -------------------------------------------------------------------- |
-| [`battery-monitor.yaml`](battery-monitor.yaml)                       | Canonical package composition and ESP32 framework                    |
-| [`packages/battery-config.yaml`](packages/battery-config.yaml)       | Battery, shunt, polarity, pin, timing, and rule defaults             |
-| [`packages/connectivity.yaml`](packages/connectivity.yaml)           | Wi-Fi, encrypted API, OTA, time, and diagnostics                     |
-| [`packages/measurement.yaml`](packages/measurement.yaml)             | INA219 measurements, sign normalization, freshness, and current mode |
-| [`packages/soc.yaml`](packages/soc.yaml)                             | Coulomb counting, checkpoints, validity, and manual anchors          |
-| [`packages/soc-rules.yaml`](packages/soc-rules.yaml)                 | Hysteretic conditions and durable event journal                      |
-| [`packages/display.yaml`](packages/display.yaml)                     | SSD1306 pages                                                        |
-| [`include/battery_monitor_types.h`](include/battery_monitor_types.h) | Fixed-record persistence and rule helpers                            |
-| [`assets/fonts/`](assets/fonts/)                                     | Vendored Roboto Mono font and OFL license                            |
-| [`tests/battery_monitor_helpers_test.cpp`](tests/battery_monitor_helpers_test.cpp) | Deterministic host tests for production helpers         |
-| [`tests/validate_repository.py`](tests/validate_repository.py)       | Clean-checkout, asset, fixture, credential, and Markdown checks       |
-| [`.github/workflows/esphome.yaml`](.github/workflows/esphome.yaml)   | Pinned clean-checkout validation and ESP32-C3 compilation            |
+| Path                                                                 | Purpose                                                                  |
+| -------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| [`battery-monitor.yaml`](battery-monitor.yaml)                       | Canonical package composition and ESP32 framework                        |
+| [`packages/battery-config.yaml`](packages/battery-config.yaml)       | Battery, shunt, polarity, pin, timing, and rule defaults                 |
+| [`packages/connectivity.yaml`](packages/connectivity.yaml)           | Wi-Fi, encrypted API, OTA, time, and diagnostics                         |
+| [`packages/measurement.yaml`](packages/measurement.yaml)             | INA219 measurements, sign normalization, freshness, and current mode     |
+| [`packages/soc.yaml`](packages/soc.yaml)                             | Coulomb counting, checkpoints, validity, and manual anchors              |
+| [`packages/soc-rules.yaml`](packages/soc-rules.yaml)                 | Hysteretic conditions and durable event journal                          |
+| [`packages/display.yaml`](packages/display.yaml)                     | SSD1306 pages                                                            |
+| [`include/battery_monitor_types.h`](include/battery_monitor_types.h) | Fixed-record persistence and rule helpers                                |
+| [`assets/fonts/`](assets/fonts/)                                     | Vendored Roboto Mono font and OFL license                                |
+| [`docs/fuse-selection.md`](docs/fuse-selection.md)                   | Fuse parameters, provisional targets, calculations, and selection record |
 
 The three `shunt*.yaml` files are obsolete prototypes retained only until the
 canonical firmware completes hardware acceptance. Do not use them for a new
@@ -206,22 +337,6 @@ esphome compile battery-monitor.yaml
 
 GPIO8/GPIO9 strapping warnings are expected with the default pin assignment;
 compiler warnings or missing includes/assets are not.
-
-Run the deterministic repository and production-helper checks locally:
-
-```sh
-python3 tests/validate_repository.py
-c++ -std=c++17 -Wall -Wextra -Wpedantic -Werror -I. \
-  tests/battery_monitor_helpers_test.cpp -o /tmp/battery-monitor-helper-tests
-/tmp/battery-monitor-helper-tests
-rm -f /tmp/battery-monitor-helper-tests
-```
-
-The GitHub Actions workflow repeats both checks from a clean checkout, copies
-the valid-shaped example to private `secrets.yaml`, installs exactly ESPHome
-2026.8.0, validates the canonical configuration, and compiles the default
-ESP32-C3 target. It rejects compiler diagnostics while allowing the separately
-documented GPIO8/GPIO9 configuration warnings.
 
 ## Flash and update
 
@@ -339,3 +454,10 @@ automations are documented in
 - [`plans/02-evolution-plan.md`](plans/02-evolution-plan.md) covers calibration,
   qualified endpoints, capacity learning, improved measurement hardware, and
   future fail-safe local contactor control.
+- [`plans/03-local-tooling-plan.md`](plans/03-local-tooling-plan.md) defines the
+  local rendering and repository-check interface.
+- [`plans/04-system-installation-diagram-plan.md`](plans/04-system-installation-diagram-plan.md)
+  records the reviewed system topology and diagram acceptance criteria.
+
+Repository checks, development tooling, schematic generation, and contribution
+workflow are documented separately in [`CONTRIBUTING.md`](CONTRIBUTING.md).

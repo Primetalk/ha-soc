@@ -6,6 +6,9 @@ instruments, tolerances, and pass/fail decisions. Do not remove the obsolete
 prototype configurations or enable real charger/load control until every
 applicable acceptance item passes.
 
+Select and record `F_MAIN`, `F1`, `F2`, and `F3` using the separate
+[fuse-selection guide](fuse-selection.md) before energizing the installation.
+
 ## Safety prerequisites
 
 This monitor is not a BMS or battery safety device. Before energizing anything,
@@ -41,6 +44,7 @@ relay.
 | INA219 breakout make/revision                          |                                            |
 | Onboard-shunt isolation method                         | desolder / jumper / documented cut / other |
 | External shunt make/serial/rating                      | 500 A / 75 mV expected                     |
+| Fuse-selection record / design-review reference        |                                            |
 | Battery/BMS                                            |                                            |
 | Reference multimeter and calibration status            |                                            |
 | Reference DC current instrument and calibration status |                                            |
@@ -67,6 +71,11 @@ tolerance after seeing the result.
       protected sense lead.
 - [ ] Each Kelvin lead is fused near the energized shunt tap with a device that
       protects the wire and has a suitable DC interrupt capability.
+- [ ] `F1`, `F2`, `F3`, and `F_MAIN` selections record nominal current,
+      time-current behavior, DC voltage rating, DC interrupt rating, holder
+      rating, protected-wire ampacity, prospective fault current, and maximum
+      unfused length as required by the
+      [fuse-selection guide](fuse-selection.md).
 - [ ] Kelvin terminals are direct shunt sense points, not remote high-current
       lugs with load-dependent voltage drop.
 - [ ] Thin leads are paired/routed together, mechanically protected, and cannot

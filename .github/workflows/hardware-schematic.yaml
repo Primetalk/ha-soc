@@ -1,0 +1,48 @@
+name: Hardware schematic
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hardware-schematic-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  render-svg:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install CircuitikZ toolchain
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            dvisvgm \
+            ghostscript \
+            latexmk \
+            texlive-fonts-recommended \
+            texlive-latex-base \
+            texlive-latex-extra \
+            texlive-pictures
+
+      - name: Render SVGs
+        shell: bash
+        run: ./scripts/render-schematic.sh
+
+      - name: Upload rendered SVGs
+        uses: actions/upload-artifact@v4
+        with:
+          name: hardware-schematic-svgs
+          path: |
+            hardware/battery-monitor-schematic.svg
+            hardware/battery-system-installation.svg
+          if-no-files-found: error
+          retention-days: 30

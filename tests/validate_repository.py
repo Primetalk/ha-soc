@@ -25,6 +25,9 @@ EXPECTED_PACKAGES = {
 REQUIRED_PATHS = {
     ".gitignore",
     ".github/workflows/esphome.yaml",
+    ".github/workflows/hardware-schematic.yaml",
+    "CONTRIBUTING.md",
+    "Taskfile.yml",
     "battery-monitor.yaml",
     "secrets.example.yaml",
     "include/battery_monitor_types.h",
@@ -32,8 +35,61 @@ REQUIRED_PATHS = {
     "assets/fonts/OFL.txt",
     "docs/home-assistant.md",
     "docs/commissioning.md",
+    "docs/fuse-selection.md",
+    "hardware/battery-monitor-schematic.tex",
+    "hardware/battery-monitor-schematic.svg",
+    "hardware/battery-system-installation.tex",
+    "hardware/battery-system-installation.svg",
+    "scripts/preview-schematics.sh",
+    "scripts/render-schematic.sh",
     "tests/battery_monitor_helpers_test.cpp",
     "tests/validate_repository.py",
+}
+
+SCHEMATIC_PAIRS = (
+    (
+        "hardware/battery-monitor-schematic.tex",
+        "hardware/battery-monitor-schematic.svg",
+    ),
+    (
+        "hardware/battery-system-installation.tex",
+        "hardware/battery-system-installation.svg",
+    ),
+)
+
+EXPECTED_DETAILED_MODULE_PORTS = {
+    "ina-vin-plus",
+    "ina-vin-minus",
+    "ina-3v3",
+    "ina-gnd",
+    "ina-sda",
+    "ina-scl",
+    "esp-3v3",
+    "esp-gnd",
+    "esp-sda",
+    "esp-scl",
+    "oled-3v3",
+    "oled-gnd",
+    "oled-sda",
+    "oled-scl",
+    "supply-12v-in",
+    "supply-3v3-out",
+    "supply-gnd",
+}
+
+EXPECTED_BALANCE_TAP_PORTS = {
+    "bms-tap-bminus",
+    "bms-tap-b1",
+    "bms-tap-b2",
+    "bms-tap-b3",
+    "bms-tap-bplus",
+}
+
+EXPECTED_IMPLEMENTED_MONITOR_PORTS = {
+    "monitor-vmon",
+    "monitor-kbus",
+    "monitor-kbat",
+    "monitor-gnd",
 }
 
 CANONICAL_TEXT_PATHS = {
@@ -107,6 +163,191 @@ def check_required_paths(checks: Checks) -> None:
         checks.require(path.is_file(), f"required file is absent: {relative_path}")
         if path.is_file():
             checks.require(path.stat().st_size > 0, f"required file is empty: {relative_path}")
+
+
+def check_renderer_tooling(checks: Checks) -> None:
+    tool_paths = (
+        "scripts/render-schematic.sh",
+        "scripts/preview-schematics.sh",
+    )
+    for relative_path in tool_paths:
+        tool = ROOT / relative_path
+        if not tool.is_file():
+            continue
+        checks.require(
+            bool(tool.stat().st_mode & 0o111),
+            f"schematic tool is not executable: {relative_path}",
+        )
+
+    renderer = ROOT / "scripts/render-schematic.sh"
+    if renderer.is_file():
+        renderer_text = renderer.read_text(encoding="utf-8")
+        for stem in ("battery-monitor-schematic", "battery-system-installation"):
+            checks.require(
+                f'"{stem}"' in renderer_text,
+                f"canonical renderer does not include schematic stem: {stem}",
+            )
+
+    previewer = ROOT / "scripts/preview-schematics.sh"
+    if previewer.is_file():
+        previewer_text = previewer.read_text(encoding="utf-8")
+        checks.require(
+            "./scripts/render-schematic.sh" in previewer_text,
+            "schematic preview helper does not invoke the canonical renderer",
+        )
+        checks.require(
+            "qlmanage" in previewer_text,
+            "schematic preview helper does not use macOS Quick Look",
+        )
+        checks.require(
+            'PREVIEW_DIR="build/schematic-preview"' in previewer_text,
+            "schematic preview helper does not keep output under ignored build storage",
+        )
+
+    taskfile = ROOT / "Taskfile.yml"
+    if taskfile.is_file():
+        taskfile_text = taskfile.read_text(encoding="utf-8")
+        checks.require(
+            "schematic:preview:" in taskfile_text
+            and "./scripts/preview-schematics.sh" in taskfile_text,
+            "Taskfile does not expose the canonical schematic preview helper",
+        )
+
+    workflow = ROOT / ".github/workflows/hardware-schematic.yaml"
+    if workflow.is_file():
+        workflow_text = workflow.read_text(encoding="utf-8")
+        checks.require(
+            "run: ./scripts/render-schematic.sh" in workflow_text,
+            "hardware schematic workflow does not invoke the canonical renderer",
+        )
+        checks.require(
+            not re.search(r"^\s{2}(push|pull_request):", workflow_text, re.MULTILINE),
+            "hardware schematic workflow must remain manual-only",
+        )
+        checks.require(
+            "  workflow_dispatch:" in workflow_text,
+            "hardware schematic workflow is missing its manual dispatch trigger",
+        )
+        for _, svg_path in SCHEMATIC_PAIRS:
+            checks.require(
+                svg_path in workflow_text,
+                f"hardware schematic workflow does not upload {svg_path}",
+            )
+
+
+def macro_invocation_ids(source: str, macro_name: str) -> list[str]:
+    return re.findall(
+        rf"^\s*\\{re.escape(macro_name)}\{{([^{{}}]+)\}}",
+        source,
+        re.MULTILINE,
+    )
+
+
+def require_exact_ids(
+    checks: Checks,
+    actual_ids: list[str],
+    expected_ids: set[str],
+    description: str,
+) -> None:
+    checks.require(
+        len(actual_ids) == len(expected_ids) and set(actual_ids) == expected_ids,
+        f"{description} differ from the expected set: found {actual_ids}",
+    )
+
+
+def check_schematic_sources(checks: Checks) -> None:
+    detailed_path = ROOT / "hardware/battery-monitor-schematic.tex"
+    if detailed_path.is_file():
+        detailed_source = detailed_path.read_text(encoding="utf-8")
+        require_exact_ids(
+            checks,
+            macro_invocation_ids(detailed_source, "ModulePort"),
+            EXPECTED_DETAILED_MODULE_PORTS,
+            "detailed monitor module contacts",
+        )
+
+    installation_path = ROOT / "hardware/battery-system-installation.tex"
+    if not installation_path.is_file():
+        return
+
+    installation_source = installation_path.read_text(encoding="utf-8")
+    cell_ids = re.findall(r"\\texttt\{(BT[0-9]+)\}", installation_source)
+    checks.require(
+        len(cell_ids) == 4 and set(cell_ids) == {"BT1", "BT2", "BT3", "BT4"},
+        f"installation diagram must contain exactly BT1-BT4 once: found {cell_ids}",
+    )
+    require_exact_ids(
+        checks,
+        macro_invocation_ids(installation_source, "BalanceTapPort"),
+        EXPECTED_BALANCE_TAP_PORTS,
+        "installation balance-tap ports",
+    )
+    require_exact_ids(
+        checks,
+        macro_invocation_ids(installation_source, "ImplementedMonitorPort"),
+        EXPECTED_IMPLEMENTED_MONITOR_PORTS,
+        "implemented monitor installation ports",
+    )
+
+    required_fragments = {
+        r"{K\_BUS / VIN+}": "K_BUS / VIN+ monitor conductor",
+        r"{K\_BAT / VIN-}": "K_BAT / VIN- monitor conductor",
+        "{VMON+ / +12V IN}": "VMON+ / +12V IN monitor conductor",
+        r"{GND / P$-$ ref}": "GND / P- monitor conductor",
+        r"{$F_1$}": "independent F1 Kelvin fuse",
+        r"{$F_2$}": "independent F2 Kelvin fuse",
+        r"{$F_3$}": "independent F3 monitor-supply fuse",
+        "{RESERVE = MAINS}": "reversed ATS reserve input",
+        "{NORMAL = INVERTER}": "reversed ATS normal input",
+        r"interlocked\\break-before-make": "interlocked break-before-make ATS",
+        "Mains available:": "mains-available transition state",
+        "Mains missing:": "mains-missing transition state",
+        "Mains restored:": "mains-restored transition state",
+        r"{CHARGER\_ENABLE}": "future CHARGER_ENABLE output",
+        "{future output --- not implemented}": "future-output implementation status",
+        "{control now}": "current Home Assistant control status",
+        "HA smart-plug control and future local enable are alternatives.": (
+            "current/future charger-control alternative warning"
+        ),
+    }
+    for fragment, description in required_fragments.items():
+        checks.require(
+            fragment in installation_source,
+            f"installation diagram is missing {description}",
+        )
+
+
+def check_rendered_schematics(checks: Checks) -> None:
+    for source_path, svg_path in SCHEMATIC_PAIRS:
+        source = ROOT / source_path
+        svg = ROOT / svg_path
+        if source.is_file():
+            source_text = source.read_text(encoding="utf-8")
+            checks.require(
+                "fill=white" in source_text and "fit=(diagram-content)" in source_text,
+                f"schematic source lacks its fitted opaque canvas: {source_path}",
+            )
+        if not svg.is_file():
+            continue
+
+        svg_text = svg.read_text(encoding="utf-8")
+        checks.require("<svg" in svg_text, f"rendered file is not SVG: {svg_path}")
+        checks.require(
+            "<text" not in svg_text,
+            f"rendered schematic contains font-dependent text elements: {svg_path}",
+        )
+        checks.require(
+            "<path" in svg_text,
+            f"rendered schematic contains no path-based drawing data: {svg_path}",
+        )
+        checks.require(
+            re.search(
+                r"<g id=['\"]page1['\"]>\s*<path\b[^>]*fill=['\"]#fff['\"]",
+                svg_text,
+            )
+            is not None,
+            f"rendered schematic lacks an opaque white page canvas: {svg_path}",
+        )
 
 
 def check_canonical_composition(checks: Checks) -> None:
@@ -291,7 +532,13 @@ def check_ignore_policy(checks: Checks) -> None:
 
 
 def check_markdown_fences(checks: Checks) -> None:
-    for relative_path in ("README.md", "docs/home-assistant.md", "docs/commissioning.md"):
+    for relative_path in (
+        "README.md",
+        "CONTRIBUTING.md",
+        "docs/home-assistant.md",
+        "docs/commissioning.md",
+        "docs/fuse-selection.md",
+    ):
         fence_count = sum(
             1 for line in read_text(relative_path).splitlines() if line.startswith("```")
         )
@@ -304,6 +551,9 @@ def check_markdown_fences(checks: Checks) -> None:
 def main() -> int:
     checks = Checks()
     check_required_paths(checks)
+    check_renderer_tooling(checks)
+    check_schematic_sources(checks)
+    check_rendered_schematics(checks)
     check_canonical_composition(checks)
     check_secrets_fixture(checks)
     check_yaml_credentials(checks)

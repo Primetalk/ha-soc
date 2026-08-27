@@ -1,0 +1,41 @@
+version: "3"
+
+tasks:
+  schematic:
+    desc: Render and update both committed hardware schematic SVGs
+    cmds:
+      - ./scripts/render-schematic.sh
+
+  schematic:check:
+    desc: Verify that both committed hardware schematic SVGs are current
+    cmds:
+      - ./scripts/render-schematic.sh --check
+
+  schematic:preview:
+    desc: Render both schematics and create macOS Quick Look PNG previews
+    cmds:
+      - ./scripts/preview-schematics.sh
+
+  validate:
+    desc: Run deterministic repository validation
+    cmds:
+      - python3 tests/validate_repository.py
+
+  test:helpers:
+    desc: Compile and run the deterministic C++ helper tests
+    vars:
+      TEST_BINARY:
+        sh: mktemp "${TMPDIR:-/tmp}/battery-monitor-helper-tests.XXXXXX"
+    cmds:
+      - defer: rm -f -- "{{.TEST_BINARY}}"
+      - >-
+        "${CXX:-c++}" -std=c++17 -Wall -Wextra -Wpedantic -Werror -I.
+        tests/battery_monitor_helpers_test.cpp -o "{{.TEST_BINARY}}"
+      - '"{{.TEST_BINARY}}"'
+
+  check:
+    desc: Run repository validation, helper tests, and schematic freshness checks
+    deps:
+      - validate
+      - test:helpers
+      - schematic:check
