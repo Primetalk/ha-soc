@@ -40,7 +40,6 @@ REQUIRED_PATHS = {
     "hardware/battery-monitor-schematic.svg",
     "hardware/battery-system-installation.tex",
     "hardware/battery-system-installation.svg",
-    "plans/04-system-installation-diagram-plan.md",
     "scripts/preview-schematics.sh",
     "scripts/render-schematic.sh",
     "tests/battery_monitor_helpers_test.cpp",
