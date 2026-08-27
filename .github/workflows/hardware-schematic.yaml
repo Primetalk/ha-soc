@@ -1,18 +1,6 @@
 name: Hardware schematic
 
 on:
-  push:
-    paths:
-      - "hardware/battery-monitor-schematic.tex"
-      - "hardware/battery-monitor-schematic.svg"
-      - "scripts/render-schematic.sh"
-      - ".github/workflows/hardware-schematic.yaml"
-  pull_request:
-    paths:
-      - "hardware/battery-monitor-schematic.tex"
-      - "hardware/battery-monitor-schematic.svg"
-      - "scripts/render-schematic.sh"
-      - ".github/workflows/hardware-schematic.yaml"
   workflow_dispatch:
 
 permissions:
@@ -45,14 +33,16 @@ jobs:
             texlive-latex-extra \
             texlive-pictures
 
-      - name: Verify committed SVG
+      - name: Render SVGs
         shell: bash
-        run: ./scripts/render-schematic.sh --check
+        run: ./scripts/render-schematic.sh
 
-      - name: Upload rendered SVG
+      - name: Upload rendered SVGs
         uses: actions/upload-artifact@v4
         with:
-          name: battery-monitor-schematic-svg
-          path: build/schematic/battery-monitor-schematic.svg
+          name: hardware-schematic-svgs
+          path: |
+            hardware/battery-monitor-schematic.svg
+            hardware/battery-system-installation.svg
           if-no-files-found: error
           retention-days: 30

@@ -2,14 +2,19 @@ version: "3"
 
 tasks:
   schematic:
-    desc: Render and update the committed hardware schematic SVG
+    desc: Render and update both committed hardware schematic SVGs
     cmds:
       - ./scripts/render-schematic.sh
 
   schematic:check:
-    desc: Verify that the committed hardware schematic SVG is current
+    desc: Verify that both committed hardware schematic SVGs are current
     cmds:
       - ./scripts/render-schematic.sh --check
+
+  schematic:preview:
+    desc: Render both schematics and create macOS Quick Look PNG previews
+    cmds:
+      - ./scripts/preview-schematics.sh
 
   validate:
     desc: Run deterministic repository validation

@@ -4,11 +4,11 @@ set -euo pipefail
 
 readonly SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 readonly REPO_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
-readonly SOURCE="hardware/battery-monitor-schematic.tex"
-readonly COMMITTED_SVG="hardware/battery-monitor-schematic.svg"
 readonly BUILD_DIR="build/schematic"
-readonly CANDIDATE_SVG="${BUILD_DIR}/battery-monitor-schematic.svg"
-readonly DVISVGM_LOG="${BUILD_DIR}/dvisvgm.log"
+readonly -a SCHEMATIC_STEMS=(
+  "battery-monitor-schematic"
+  "battery-system-installation"
+)
 
 mode="render"
 
@@ -16,11 +16,11 @@ usage() {
   cat <<'EOF'
 Usage: ./scripts/render-schematic.sh [--check]
 
-Render hardware/battery-monitor-schematic.tex as a font-independent SVG.
+Render every hardware CircuitikZ source as a font-independent committed SVG.
 
 Options:
-  --check  Render to build/schematic and fail if the committed SVG is stale.
-           The committed artifact is never modified in this mode.
+  --check  Render to build/schematic and fail if any committed SVG is stale.
+           Committed artifacts are never modified in this mode.
   -h, --help
            Show this help text.
 
@@ -93,61 +93,140 @@ fi
 
 cd -- "${REPO_ROOT}"
 
-[[ -f "${SOURCE}" ]] || die "source file is absent: ${SOURCE}"
-if [[ "${mode}" == "check" && ! -f "${COMMITTED_SVG}" ]]; then
-  die "committed SVG is absent: ${COMMITTED_SVG}"
-fi
+for stem in "${SCHEMATIC_STEMS[@]}"; do
+  source_path="hardware/${stem}.tex"
+  [[ -f "${source_path}" ]] || die "source file is absent: ${source_path}"
+done
 
 rm -rf -- "${BUILD_DIR}"
 mkdir -p -- "${BUILD_DIR}"
 
-latexmk \
-  -dvi \
-  -interaction=nonstopmode \
-  -halt-on-error \
-  -file-line-error \
-  -outdir="${BUILD_DIR}" \
-  "${SOURCE}"
+for stem in "${SCHEMATIC_STEMS[@]}"; do
+  source_path="hardware/${stem}.tex"
+  candidate_svg="${BUILD_DIR}/${stem}.svg"
+  dvisvgm_log="${BUILD_DIR}/${stem}.dvisvgm.log"
 
-set +e
-dvisvgm \
-  "${dvisvgm_args[@]}" \
-  --output="${CANDIDATE_SVG}" \
-  "${BUILD_DIR}/battery-monitor-schematic.dvi" \
-  2>&1 | tee "${DVISVGM_LOG}"
-dvisvgm_status="${PIPESTATUS[0]}"
-set -e
+  latexmk \
+    -dvi \
+    -interaction=nonstopmode \
+    -halt-on-error \
+    -file-line-error \
+    -outdir="${BUILD_DIR}" \
+    "${source_path}"
 
-(( dvisvgm_status == 0 )) || die "dvisvgm failed with status ${dvisvgm_status}"
-if grep -Eiq 'PostScript specials ignored|Ghostscript not found' "${DVISVGM_LOG}"; then
-  die "dvisvgm could not process Ghostscript specials; install Ghostscript or set DVISVGM_LIBGS"
-fi
+  set +e
+  dvisvgm \
+    "${dvisvgm_args[@]}" \
+    --output="${candidate_svg}" \
+    "${BUILD_DIR}/${stem}.dvi" \
+    2>&1 | tee "${dvisvgm_log}"
+  dvisvgm_status="${PIPESTATUS[0]}"
+  set -e
 
-[[ -s "${CANDIDATE_SVG}" ]] || die "renderer produced an empty SVG"
-grep -q '<svg' "${CANDIDATE_SVG}" || die "renderer output is not an SVG document"
-if grep -q '<text' "${CANDIDATE_SVG}"; then
-  die "renderer output contains font-dependent text elements"
-fi
+  (( dvisvgm_status == 0 )) ||
+    die "dvisvgm failed for ${source_path} with status ${dvisvgm_status}"
+  if grep -Eiq 'PostScript specials ignored|Ghostscript not found' "${dvisvgm_log}"; then
+    die "dvisvgm could not process Ghostscript specials for ${source_path}; install Ghostscript or set DVISVGM_LIBGS"
+  fi
+
+  [[ -s "${candidate_svg}" ]] ||
+    die "renderer produced an empty SVG for ${source_path}"
+  grep -q '<svg' "${candidate_svg}" ||
+    die "renderer output is not an SVG document for ${source_path}"
+  if grep -q '<text' "${candidate_svg}"; then
+    die "renderer output contains font-dependent text elements for ${source_path}"
+  fi
+done
 
 if [[ "${mode}" == "check" ]]; then
-  if ! cmp -s -- "${CANDIDATE_SVG}" "${COMMITTED_SVG}"; then
+  stale_count=0
+  for stem in "${SCHEMATIC_STEMS[@]}"; do
+    candidate_svg="${BUILD_DIR}/${stem}.svg"
+    committed_svg="hardware/${stem}.svg"
+    if [[ ! -f "${committed_svg}" ]] || ! cmp -s -- "${candidate_svg}" "${committed_svg}"; then
+      printf 'render-schematic: committed SVG is absent or stale: %s\n' \
+        "${committed_svg}" >&2
+      stale_count=$((stale_count + 1))
+    else
+      printf 'Hardware schematic SVG is current: %s\n' "${committed_svg}"
+    fi
+  done
+  if (( stale_count > 0 )); then
     cat >&2 <<'EOF'
-render-schematic: the committed hardware schematic SVG is stale.
-Regenerate it with:
+Regenerate every committed hardware diagram with:
 
   ./scripts/render-schematic.sh
 EOF
     exit 1
   fi
-  printf 'Hardware schematic SVG is current: %s\n' "${COMMITTED_SVG}"
   exit 0
 fi
 
-temporary_svg="$(mktemp "${COMMITTED_SVG}.tmp.XXXXXX")"
-trap 'rm -f -- "${temporary_svg}"' EXIT
-cp -- "${CANDIDATE_SVG}" "${temporary_svg}"
-chmod 0644 "${temporary_svg}"
-mv -f -- "${temporary_svg}" "${COMMITTED_SVG}"
-trap - EXIT
+# Stage every candidate beside its destination before replacing anything. Keep
+# rollback copies so an unexpected replacement failure cannot leave only part
+# of the committed diagram set updated.
+temporary_svgs=()
+backup_svgs=()
+had_originals=()
 
-printf 'Rendered hardware schematic: %s\n' "${COMMITTED_SVG}"
+cleanup_transaction_files() {
+  for path in "${temporary_svgs[@]}" "${backup_svgs[@]}"; do
+    [[ -n "${path}" ]] && rm -f -- "${path}"
+  done
+  return 0
+}
+trap cleanup_transaction_files EXIT
+
+for stem in "${SCHEMATIC_STEMS[@]}"; do
+  candidate_svg="${BUILD_DIR}/${stem}.svg"
+  committed_svg="hardware/${stem}.svg"
+  temporary_svg="$(mktemp "${committed_svg}.tmp.XXXXXX")"
+  cp -- "${candidate_svg}" "${temporary_svg}"
+  chmod 0644 "${temporary_svg}"
+  temporary_svgs+=("${temporary_svg}")
+
+  if [[ -f "${committed_svg}" ]]; then
+    backup_svg="$(mktemp "${committed_svg}.backup.XXXXXX")"
+    cp -p -- "${committed_svg}" "${backup_svg}"
+    backup_svgs+=("${backup_svg}")
+    had_originals+=("yes")
+  else
+    backup_svgs+=("")
+    had_originals+=("no")
+  fi
+done
+
+replaced_count=0
+for index in "${!SCHEMATIC_STEMS[@]}"; do
+  stem="${SCHEMATIC_STEMS[$index]}"
+  committed_svg="hardware/${stem}.svg"
+  if mv -f -- "${temporary_svgs[$index]}" "${committed_svg}"; then
+    temporary_svgs[$index]=""
+    replaced_count=$((replaced_count + 1))
+    continue
+  fi
+
+  rollback_failed=0
+  while (( replaced_count > 0 )); do
+    replaced_count=$((replaced_count - 1))
+    rollback_stem="${SCHEMATIC_STEMS[$replaced_count]}"
+    rollback_target="hardware/${rollback_stem}.svg"
+    if [[ "${had_originals[$replaced_count]}" == "yes" ]]; then
+      if ! mv -f -- "${backup_svgs[$replaced_count]}" "${rollback_target}"; then
+        rollback_failed=1
+      else
+        backup_svgs[$replaced_count]=""
+      fi
+    elif ! rm -f -- "${rollback_target}"; then
+      rollback_failed=1
+    fi
+  done
+  if (( rollback_failed != 0 )); then
+    die "could not replace ${committed_svg}; rollback also failed"
+  fi
+  die "could not replace ${committed_svg}; previous replacements were rolled back"
+done
+
+for stem in "${SCHEMATIC_STEMS[@]}"; do
+  printf 'Rendered hardware schematic: hardware/%s.svg\n' "${stem}"
+done
