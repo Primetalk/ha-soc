@@ -44,11 +44,11 @@ verify all of these for the fuse **and its holder**:
 These values are **engineering starting points**, not approved substitutions
 for the checks above:
 
-| Fuse | Protection role | Preliminary current target | Speed | Required DC voltage and interrupt ratings |
-| ---- | --------------- | -------------------------- | ----- | ----------------------------------------- |
-| `F_MAIN` | Main battery positive conductor, bus, and installation | No repository default. Size from maximum continuous charge/load current, cable ampacity, surge duration, BMS/contactors, and installation rules. The 500 A shunt rating is **not** the fuse rating. | Select from the coordinated main-system time-current study. | At least the worst-case system voltage and prospective battery fault current; normally a high-interrupt battery fuse system. |
-| `F1`, `F2` | The two thin INA219 Kelvin leads | `0.5 A` each is the preliminary target; `0.1–1 A` may be reasonable if the selected wire and high-interrupt fuse family require another value. INA219 input current is tiny, so wire protection and breaking capacity dominate. | Fast-acting is normally preferred because there is no intentional inrush, subject to the selected part's actual curve. | At least the worst-case system voltage and the prospective fault current at each energized shunt tap. Both fuses and holders need an explicit DC interrupt rating. |
-| `F3` | Thin nominal `+12 V` input lead and protected DC/DC supply | `1 A` time-delay is the preliminary target for the planned ESP32-C3, INA219, and OLED monitor. Recalculate from the actual converter/rail and reduce it when a smaller rating survives measured startup. | Time-delay is often useful for converter input-capacitor inrush; verify with the selected converter and curve. | At least the worst-case system voltage and prospective fault current at the bus-side tap. It must also protect the actual input wire and converter. |
+| Fuse       | Protection role                                            | Preliminary current target                                                                                                                                                                                                      | Speed                                                                                                                  | Required DC voltage and interrupt ratings                                                                                                                          |
+| ---------- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `F_MAIN`   | Main battery positive conductor, bus, and installation     | No repository default. Size from maximum continuous charge/load current, cable ampacity, surge duration, BMS/contactors, and installation rules. The 500 A shunt rating is **not** the fuse rating.                             | Select from the coordinated main-system time-current study.                                                            | At least the worst-case system voltage and prospective battery fault current; normally a high-interrupt battery fuse system.                                       |
+| `F1`, `F2` | The two thin INA219 Kelvin leads                           | `0.5 A` each is the preliminary target; `0.1–1 A` may be reasonable if the selected wire and high-interrupt fuse family require another value. INA219 input current is tiny, so wire protection and breaking capacity dominate. | Fast-acting is normally preferred because there is no intentional inrush, subject to the selected part's actual curve. | At least the worst-case system voltage and the prospective fault current at each energized shunt tap. Both fuses and holders need an explicit DC interrupt rating. |
+| `F3`       | Thin nominal `+12 V` input lead and protected DC/DC supply | `1 A` time-delay is the preliminary target for the planned ESP32-C3, INA219, and OLED monitor. Recalculate from the actual converter/rail and reduce it when a smaller rating survives measured startup.                        | Time-delay is often useful for converter input-capacitor inrush; verify with the selected converter and curve.         | At least the worst-case system voltage and prospective fault current at the bus-side tap. It must also protect the actual input wire and converter.                |
 
 The capacity label `300 Ah` describes stored charge, not safe fault current. The
 shunt label `500 A / 75 mV` describes its measurement range, not the cable or
@@ -127,22 +127,22 @@ permission for a long unfused battery cable.
 
 Complete this table with manufacturer datasheets before energizing the battery:
 
-| Field | `F_MAIN` | `F1` | `F2` | `F3` |
-| ----- | -------- | ---- | ---- | ---- |
-| Manufacturer and part number | | | | |
-| Fuse technology / speed | | | | |
-| Nominal current | | | | |
-| DC voltage rating | | | | |
-| DC interrupt rating | | | | |
-| Holder part number and ratings | | | | |
-| Protected wire gauge/type/temp rating | | | | |
-| Derated wire ampacity | | | | |
-| Expected continuous current | | | | |
-| Maximum valid surge and duration | | | | |
-| Fuse clearing time at wire fault current | | | | |
-| Prospective short-circuit current at tap | | | | |
-| Installation location / unfused length | | | | |
-| Design-review reference and approval | | | | |
+| Field                                    | `F_MAIN` | `F1` | `F2` | `F3` |
+| ---------------------------------------- | -------- | ---- | ---- | ---- |
+| Manufacturer and part number             |          |      |      |      |
+| Fuse technology / speed                  |          |      |      |      |
+| Nominal current                          |          |      |      |      |
+| DC voltage rating                        |          |      |      |      |
+| DC interrupt rating                      |          |      |      |      |
+| Holder part number and ratings           |          |      |      |      |
+| Protected wire gauge/type/temp rating    |          |      |      |      |
+| Derated wire ampacity                    |          |      |      |      |
+| Expected continuous current              |          |      |      |      |
+| Maximum valid surge and duration         |          |      |      |      |
+| Fuse clearing time at wire fault current |          |      |      |      |
+| Prospective short-circuit current at tap |          |      |      |      |
+| Installation location / unfused length   |          |      |      |      |
+| Design-review reference and approval     |          |      |      |      |
 
 During commissioning, verify no holder or lead heats in normal operation, the
 DC/DC supply survives repeated cold starts without nuisance opening `F3`, both

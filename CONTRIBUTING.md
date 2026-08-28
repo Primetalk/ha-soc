@@ -1,8 +1,8 @@
 # Contributing
 
 This document covers repository maintenance, automated checks, and schematic
-generation. Installation, wiring, configuration, flashing, and operation of the
-battery monitor are documented in the user-facing [`README.md`](README.md).
+generation. [`README.md`](README.md) is the public gateway; detailed procedures
+and contracts live in the dedicated documents below.
 
 ## Development prerequisites
 
@@ -12,6 +12,58 @@ ESPHome version documented in [`README.md`](README.md).
 
 [Task](https://taskfile.dev/) is supported as an optional command runner. It is
 not required by CI or by the underlying scripts.
+
+## Documentation ownership
+
+Keep each subject in its primary document and link to it instead of maintaining
+competing copies:
+
+| Path                                                     | Primary responsibility                                                               |
+| -------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| [`README.md`](README.md)                                 | Prototype status, safety boundary, audience routing, compact quick start, and map    |
+| [`docs/getting-started.md`](docs/getting-started.md)     | Prerequisites, configuration, build, flash, and first-boot success path               |
+| [`docs/wiring.md`](docs/wiring.md)                       | Monitor-only wiring, conductor roles, protection boundaries, and pre-energization    |
+| [`docs/home-assistant-setup.md`](docs/home-assistant-setup.md) | First integration, dashboard, runtime settings, and guarded manual SOC anchoring |
+| [`docs/troubleshooting.md`](docs/troubleshooting.md)     | Symptom-oriented diagnosis, evidence collection, remedies, and stop-work criteria    |
+| [`docs/glossary.md`](docs/glossary.md)                   | Plain-language terminology                                                           |
+| [`docs/architecture.md`](docs/architecture.md)           | Firmware data flow, persistence, rules, events, and implemented/deferred boundaries  |
+| [`docs/home-assistant.md`](docs/home-assistant.md)       | Advanced entity/event contract and conservative automation patterns                  |
+| [`docs/commissioning.md`](docs/commissioning.md)         | Formal physical-monitor and integration acceptance record                            |
+| [`docs/fuse-selection.md`](docs/fuse-selection.md)       | Protection-design inputs and fuse-selection record                                   |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md)                     | Maintainer workflow, document ownership, checks, and contribution licensing          |
+
+Safety prerequisites, stop-work criteria, prototype limitations, and warnings
+that affect whether a reader may proceed must remain expanded and visible. Use
+HTML `details`/`summary` only for optional depth, never to hide a safety gate.
+
+Use relative local links for repository files and images. The deterministic
+validator checks public documentation targets, relevant fragments, balanced
+Markdown fences, balanced progressive-disclosure tags, required license/status
+markers, and the absence of stale current-state claims.
+
+## Licensing and provenance
+
+Project-authored source and documentation are licensed under **GPL-3.0-only**;
+see [`LICENSE`](LICENSE). Copyright notices use:
+
+```text
+Copyright (C) 2026 primetalk contributors
+```
+
+Contributions submitted to this repository are accepted under GPL-3.0-only.
+There is no additional contributor license agreement or Developer Certificate
+of Origin process.
+
+Submit only material you authored or have the right to provide under compatible
+terms. Record the source, license, and required notices for third-party material;
+do not copy from a repository merely because its source is publicly visible. In
+particular, the inspiration repository linked from [`README.md`](README.md) has
+no stated license and grants no presumed reuse permission. Factual inspiration
+may be acknowledged without copying its expression or implying permission.
+
+Third-party assets keep their separate licenses. The bundled Roboto Mono font is
+covered by the SIL Open Font License in
+[`assets/fonts/OFL.txt`](assets/fonts/OFL.txt), not by the project's GPL grant.
 
 ## Recurring checks
 

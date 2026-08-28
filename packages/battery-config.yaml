@@ -7,7 +7,11 @@
 # compile-time substitutions and require a firmware rebuild.
 
 substitutions:
-  # Device identity
+  # ---------------------------------------------------------------------------
+  # INSTALLATION VALUES — review these against every as-built monitor.
+  # ---------------------------------------------------------------------------
+
+  # Device identity and exact ESP32 board/build profile.
   device_name: battery-monitor
   friendly_name: Battery Monitor
   esp32_board: esp32-c3-devkitm-1
@@ -39,7 +43,14 @@ substitutions:
   oled_address: "0x3C"
   oled_rotation: "180"
 
-  # Measurement and integration timing.
+  # ---------------------------------------------------------------------------
+  # ADVANCED FIRMWARE DEFAULTS — normally leave unchanged.
+  # Changing these affects validation, persistence exposure, rule startup, or
+  # measurement semantics. Read docs/architecture.md and repeat the applicable
+  # docs/commissioning.md tests before relying on a modified value.
+  # ---------------------------------------------------------------------------
+
+  # Measurement and integration timing. These are not calibration controls.
   measurement_update_interval: 1s
   measurement_stale_after_ms: "5000"
   soc_max_sample_gap_ms: "10000"

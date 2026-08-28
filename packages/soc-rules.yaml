@@ -46,6 +46,15 @@ esphome:
         - script.execute: evaluate_soc_rules
 
 number:
+  # All six values form one configuration. Levels must remain strictly ordered:
+  #
+  #   Stop Load < Capacity Warning < Stop Charge
+  #
+  # Every value must be finite and each hysteresis must be nonnegative (these UI
+  # controls intentionally use a 0.5% minimum). An invalid combination turns off
+  # SOC Rule Configuration Valid and SOC Rule Engine Ready and makes all three
+  # authoritative rule conditions unavailable until the configuration is fixed.
+  # Editing any value reconstructs/baselines latches without a synthetic event.
   - platform: template
     name: Stop Charge Level
     id: stop_charge_level
@@ -152,6 +161,9 @@ binary_sensor:
     name: SOC Rule Configuration Valid
     id: soc_rule_configuration_valid
     entity_category: diagnostic
+    # Source of truth: soc_rule_configuration_is_valid() in
+    # include/battery_monitor_types.h. Keep documentation and controls aligned
+    # with that helper rather than duplicating a different validity rule here.
     lambda: |-
       if (!id(stop_charge_level).has_state() ||
           !id(stop_charge_hysteresis).has_state() ||

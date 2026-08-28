@@ -1,5 +1,8 @@
 # Canonical ESPHome entry point for the battery monitor.
-# User-tunable defaults live in packages/battery-config.yaml.
+# Start with README.md, then follow docs/getting-started.md and docs/wiring.md.
+# First Home Assistant setup is in docs/home-assistant-setup.md; do not rely on
+# the physical monitor or real control actions before docs/commissioning.md passes.
+# Installation and advanced defaults live in packages/battery-config.yaml.
 
 packages:
   battery_config: !include packages/battery-config.yaml
