@@ -182,21 +182,34 @@ The default bus is:
 
 | Signal      | ESP32-C3 default      | INA219 | OLED |
 | ----------- | --------------------- | ------ | ---- |
-| SDA         | GPIO8                 | SDA    | SDA  |
-| SCL         | GPIO9                 | SCL    | SCL  |
+| GND         | common GND            | GND    | GND  |
 | Logic power | compatible 3.3 V rail | VCC    | VCC  |
-| Reference   | common GND            | GND    | GND  |
+| SCL         | GPIO1                 | SCL    | SCL  |
+| SDA         | GPIO0                 | SDA    | SDA  |
 
 The INA219 default address is `0x40`; the OLED default is `0x3C`. SDA and SCL are
 two separate nets on one shared multidrop bus. Modules connect to both nets; they
 are not a single interchangeable wire.
 
-GPIO8 and GPIO9 are ESP32-C3 strapping pins, and many I2C modules include pull-up
-resistors. ESPHome therefore warns about the default assignment. Test repeated
-cold boot, reset, and power recovery with the actual modules attached. If boot is
-unreliable, move the bus to verified non-strapping pins in
-[`../packages/battery-config.yaml`](../packages/battery-config.yaml), rebuild, and
-repeat validation. See [`troubleshooting.md`](troubleshooting.md).
+On the board edge described as `5V, G, 3V3, 4, 3, 2, 1, 0`, GPIO1 followed by
+GPIO0 matches the OLED signal order SCL followed by SDA. GND and 3V3 are not
+adjacent to that signal pair: GPIO4, GPIO3, and GPIO2 lie between 3V3 and GPIO1.
+Do not treat the four OLED pins as a straight four-pin connection to the
+controller. Wire each conductor by its signal label.
+
+The defaults deliberately avoid GPIO2, GPIO8, and GPIO9, which Espressif lists as
+ESP32-C3 strapping pins in its official
+[GPIO summary](https://docs.espressif.com/projects/esp-idf/en/stable/esp32c3/api-reference/peripherals/gpio.html#gpio-summary).
+Many I2C modules include pull-up resistors; using a strapping pin for the bus can
+therefore alter its level while the chip samples the boot configuration. GPIO0
+and GPIO1 avoid that interaction. The trade-off is that they cannot serve as ADC
+inputs while assigned to I2C. GPIO4 through GPIO7 remain free for the conventional
+external JTAG interface.
+
+SuperMini layouts and onboard connections can vary. Verify the exact board
+revision, 3.3 V pull-up compatibility, and combined pull-up strength, then test
+repeated cold boot, reset, and power recovery with the actual modules attached.
+See [`troubleshooting.md`](troubleshooting.md).
 
 ## De-energized inspection
 

@@ -33,11 +33,13 @@ substitutions:
   # the opposite sign. All public entities always use positive = charging.
   current_polarity_multiplier: "1.0"
 
-  # I2C hardware defaults for the ESP32-C3 SuperMini hardware. The generic
-  # esp32-c3-devkitm-1 build profile above is intentionally retained because it
-  # is compatible with common SuperMini variants.
-  i2c_sda_pin: GPIO8
-  i2c_scl_pin: GPIO9
+  # I2C defaults avoid ESP32-C3 strapping pins GPIO2, GPIO8, and GPIO9 because
+  # breakout pull-ups can affect their reset-time levels. Using GPIO0/GPIO1
+  # prevents those pins from serving as ADC inputs while I2C is connected, but
+  # leaves GPIO4-GPIO7 free for an external JTAG interface. Verify the exact
+  # SuperMini revision; the generic compatible build profile remains intentional.
+  i2c_sda_pin: GPIO0
+  i2c_scl_pin: GPIO1
   i2c_frequency: 400kHz
   ina219_address: "0x40"
   oled_address: "0x3C"

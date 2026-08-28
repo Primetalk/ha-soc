@@ -45,6 +45,7 @@ relay.
 | Firmware project/version                               | `primetalk.esphome-shunt` / `0.3.0`        |
 | ESPHome version                                        | `2026.8.0`                                 |
 | ESP32-C3 board/revision                                |                                            |
+| I2C SDA/SCL pins                                       | GPIO0 / GPIO1 expected                     |
 | INA219 breakout make/revision                          |                                            |
 | Onboard-shunt isolation method                         | desolder / jumper / documented cut / other |
 | External shunt make/serial/rating                      | 500 A / 75 mV expected                     |
@@ -115,8 +116,8 @@ esphome compile battery-monitor.yaml
 
 - [ ] Validation succeeds using ESPHome 2026.8.0.
 - [ ] Compilation succeeds without compiler warnings or errors.
-- [ ] Only the understood GPIO8/GPIO9 strapping warnings remain with default
-      pins.
+- [ ] The default GPIO0/GPIO1 build emits no strapping-pin or pin-conflict
+      warning.
 - [ ] Firmware is flashed over USB with the monitor in a safe test setup.
 - [ ] Serial logs show I2C devices at INA219 `0x40` and OLED `0x3C` (or the
       deliberately configured alternatives).
@@ -127,10 +128,11 @@ esphome compile battery-monitor.yaml
 - [ ] Home Assistant discovers the node over the encrypted native API.
 - [ ] `Device Online` turns on after network and native API connection.
 
-GPIO8 and GPIO9 are ESP32-C3 strapping pins. If cold boot/reset is unreliable,
-move I2C to verified non-strapping pins in
-[`packages/battery-config.yaml`](../packages/battery-config.yaml), rebuild, and
-repeat this section.
+The GPIO0/GPIO1 defaults avoid the ESP32-C3 strapping pins GPIO2, GPIO8, and
+GPIO9. This removes the known reset-time interaction with I2C pull-ups, but it
+does not replace testing on the exact board revision. Investigate any strapping
+warning as a custom pin override or configuration drift, and repeat this section
+after every hardware pin change.
 
 ## 3. Fresh-state behavior
 
