@@ -2,9 +2,13 @@
 
 Use this procedure after assembling the canonical monitor from
 [`battery-monitor.yaml`](../battery-monitor.yaml). Record actual observations,
-instruments, tolerances, and pass/fail decisions. Do not remove the obsolete
-prototype configurations or enable real charger/load control until every
-applicable acceptance item passes.
+instruments, tolerances, and pass/fail decisions.
+
+> **Prototype only:** Firmware and documentation exist, but the complete physical
+> monitor has not passed this checklist and no real charger or load automation
+> has been validated. Treat every applicable item as unpassed until its result is
+> recorded. Do not enable real charger/load control until every applicable
+> monitor and control-path acceptance item passes.
 
 Select and record `F_MAIN`, `F1`, `F2`, and `F3` using the separate
 [fuse-selection guide](fuse-selection.md) before energizing the installation.

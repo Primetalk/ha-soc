@@ -1,463 +1,336 @@
 # ESPHome high-side battery monitor
 
-An ESP32-C3 and INA219 battery monitor for a 4S LiFePO4 battery, an external
+An ESP32-C3 and INA219 monitor for a 4S LiFePO4 battery, an external
 500 A / 75 mV shunt, an SSD1306 OLED, and Home Assistant.
 
-The canonical ESPHome entry point is [`battery-monitor.yaml`](battery-monitor.yaml).
-It provides:
+> **Prototype only:** Firmware and documentation exist, but the complete physical
+> monitor has not passed the commissioning checklist. No real charger or load
+> automation has been validated. Do not treat this repository as a field-proven
+> battery controller or an accepted construction design.
 
-- high-side battery-voltage and current measurement;
-- normalized signed current: positive is charging, negative is discharging;
-- signed power and charging/discharging/idle states;
-- persistent, unbounded amp-hour coulomb counting;
-- explicit SOC validity and plausibility diagnostics;
-- manual `Set Battery Full`, `Set Battery Empty`, and `Invalidate SOC` controls;
+The canonical ESPHome entry point is
+[`battery-monitor.yaml`](battery-monitor.yaml). It provides:
+
+- high-side battery-voltage and bidirectional-current measurement;
+- signed current and power: positive means charging, negative means discharging;
+- manually anchored amp-hour state-of-charge estimation;
+- explicit measurement health, SOC trust, and plausibility diagnostics;
 - hysteretic Stop Charge, Capacity Warning, and Stop Load conditions;
-- durable sequence-tagged crossing metadata and replay after an API reconnect;
-- a local SSD1306 status display;
-- encrypted Home Assistant API, OTA, and a fallback captive portal.
+- persistent condition state plus sequence-tagged reconnect event replay;
+- a local SSD1306 status display; and
+- encrypted Home Assistant API, protected OTA, and a fallback setup hotspot.
 
-This firmware estimates state of charge. It is **not** a battery safety system.
-See [Safety boundary](#safety-boundary) before constructing or operating the
-monitor.
+## Safety boundary
 
-This project started based on https://github.com/jurgen2005/esphome-shunt.
+This firmware estimates state of charge. It is **not** a BMS, fuse, disconnect,
+charger protection, load protection, or safety-rated control system.
+
+Before connecting the monitor to a battery installation, provide independently
+functioning:
+
+- BMS cell-voltage, temperature, and overcurrent protection;
+- a battery main fuse with suitable DC voltage and interrupt ratings;
+- charger overvoltage and fault protection;
+- load undervoltage and fault protection;
+- correctly rated cables, bus bars, lugs, insulation, enclosure, strain relief,
+  and disconnects; and
+- a protected DC/DC supply rated for the full battery range and transients.
+
+**Never route battery or load current through the INA219 breakout, ESP32-C3,
+OLED, a PCB relay, or thin sense wire.** Main current flows only through the
+external shunt and installation-rated high-current components.
+
+The two Kelvin sense leads connect directly to the external-shunt sense points,
+are fused individually near those energized taps, and never carry monitor-supply
+current. The INA219 breakout's onboard differential shunt must be isolated using
+a method documented for the exact board revision.
+
+A 300 Ah LiFePO4 battery can deliver destructive fault current. De-energize and
+isolate the battery before changing conductors. Use appropriately qualified help,
+procedures, instruments, and personal protective equipment. Read
+[`docs/wiring.md`](docs/wiring.md) and
+[`docs/fuse-selection.md`](docs/fuse-selection.md) before choosing or connecting
+hardware.
+
+Home Assistant, Wi-Fi, crossing events, and the monitor itself are supplementary
+observability/automation paths. Independent battery and equipment protection must
+remain effective while any of them is offline, stale, rebooting, or failed.
+
+## Choose your path
+
+| You are...                                     | Start here                                           | Then use                                                                                                                                                                                           |
+| ---------------------------------------------- | ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| New to ESPHome or battery monitoring           | [`docs/getting-started.md`](docs/getting-started.md) | [`docs/wiring.md`](docs/wiring.md), [`docs/home-assistant-setup.md`](docs/home-assistant-setup.md), and qualified supervision for battery work                                                     |
+| An experienced Home Assistant/ESPHome hobbyist | [Quick start](#quick-start)                          | [`docs/home-assistant-setup.md`](docs/home-assistant-setup.md), [`docs/troubleshooting.md`](docs/troubleshooting.md), and [`docs/commissioning.md`](docs/commissioning.md)                         |
+| An engineer, integrator, or maintainer         | [`docs/architecture.md`](docs/architecture.md)       | [`docs/home-assistant.md`](docs/home-assistant.md), [`docs/fuse-selection.md`](docs/fuse-selection.md), [`docs/commissioning.md`](docs/commissioning.md), and [`CONTRIBUTING.md`](CONTRIBUTING.md) |
+
+The beginner guide explains the software path, but it does not make high-current
+battery construction beginner-safe. Stop and obtain qualified assistance when
+protection, conductor, enclosure, fault-current, or code decisions exceed your
+competence.
 
 ## Supported default hardware
 
-| Item                      | Default                                              |
-| ------------------------- | ---------------------------------------------------- |
-| Battery profile           | 4S LiFePO4, 300 Ah rated capacity                    |
-| Controller                | ESP32-C3 SuperMini                                   |
-| Current/voltage monitor   | INA219 breakout, onboard shunt electrically isolated |
-| External shunt            | 500 A / 75 mV                                        |
-| External shunt resistance | `0.075 V / 500 A = 0.00015 ohm`                      |
-| Display                   | SSD1306 128x64 I2C OLED                              |
-| INA219 address            | `0x40`                                               |
-| OLED address              | `0x3C`                                               |
-| I2C pins                  | GPIO8 SDA, GPIO9 SCL                                 |
-| Supported ESPHome         | 2026.8.0                                             |
+| Item                    | Default                                              |
+| ----------------------- | ---------------------------------------------------- |
+| Battery profile         | 4S LiFePO4, 300 Ah rated capacity                    |
+| Controller              | ESP32-C3 SuperMini                                   |
+| ESPHome board profile   | `esp32-c3-devkitm-1`                                 |
+| Current/voltage monitor | INA219 breakout, onboard shunt electrically isolated |
+| External shunt          | 500 A / 75 mV (`0.00015 ohm`)                        |
+| Display                 | SSD1306 128x64 I2C OLED                              |
+| INA219 / OLED addresses | `0x40` / `0x3C`                                      |
+| I2C pins                | GPIO8 SDA, GPIO9 SCL                                 |
+| Supported ESPHome       | `2026.8.0`                                           |
 
 Hardware and battery defaults are centralized in
 [`packages/battery-config.yaml`](packages/battery-config.yaml). Review that file
 before flashing a different installation.
 
-The physical controller is an ESP32-C3 SuperMini. ESPHome uses the compatible
-generic `esp32-c3-devkitm-1` board profile because SuperMini variants generally
-do not have a dedicated PlatformIO board definition. Confirm the flash size,
-USB mode, regulator/input pin, GPIO labels, and schematic for the exact board
-revision before assembly; SuperMini-branded boards are not guaranteed to share
-one layout.
+The physical controller is an ESP32-C3 SuperMini. The generic board profile is
+used because common SuperMini variants generally lack a dedicated PlatformIO
+definition. Confirm the flash size, USB mode, regulator/input pin, GPIO labels,
+and schematic for the exact revision; SuperMini-branded boards do not necessarily
+share one layout.
 
-## Safety boundary
+GPIO8 and GPIO9 are ESP32-C3 strapping pins, and I2C modules often include
+pull-ups. Repeatedly test cold boot, reset, and recovery with the actual modules.
+Move I2C to verified non-strapping pins and rebuild if the default hardware is
+unreliable.
 
-The monitor and its Home Assistant automations do not replace any of the
-following:
-
-- a correctly configured BMS;
-- a battery main fuse with a suitable DC interrupt rating;
-- charger overvoltage and fault protection;
-- load undervoltage and fault protection;
-- correctly sized cables, bus bars, lugs, enclosures, insulation, and fusing;
-- a protected DC/DC supply for the ESP32-C3 and peripherals.
-
-Do not route the 500 A path through the INA219 breakout, an ESP32 board, a PCB
-relay, or thin wire. Main current flows only through the external shunt and
-properly rated conductors. If future automation switches a charger or load, use
-appropriately rated contactors or equipment control inputs with isolated,
-fail-safe drivers.
-
-Disconnect and make the battery safe before changing wiring. A 300 Ah battery
-can deliver destructive fault current. Use components, fuses, procedures, and
-personal protective equipment appropriate to the installation; obtain help
-from a qualified professional when required.
-
-## System installation overview
-
-[![Conceptual 4S battery, charger, inverter, and ATS installation overview](hardware/battery-system-installation.svg)](hardware/battery-system-installation.svg)
-
-The editable
-[CircuitikZ source](hardware/battery-system-installation.tex) and checked-in
-[SVG rendering](hardware/battery-system-installation.svg) show how the SOC
-monitor fits into one possible battery-backed AC system. The overview includes
-four individual 1S cells (`BT1`-`BT4`), a common-port low-side 4S BMS, all five
-independent balance taps, the external shunt, `F_MAIN`, protected DC buses, a
-CC/CV charger, an inverter, mains sensing, an ATS, Home Assistant, and the SOC
-monitor as one module.
-
-The high-current topology shown is:
+## Monitor connection overview
 
 ```text
-battery B+ -> external shunt -> F_MAIN -> protected DC+ bus
-battery B- -> BMS B-
-BMS P-     -> protected DC- bus
+BATTERY B+ ── external shunt ── F_MAIN ── protected DC+ bus
+              │            │
+              F2           F1
+              │            │
+           K_BAT         K_BUS ──┐
+                                 │
+protected DC+ bus ── F3 ── VMON+ ├── SOC monitor
+protected DC- / BMS P- ─── GND ──┘
 ```
 
-The charger and inverter connect only to the protected system buses. The five
-BMS balance conductors (`B-`, `B1`, `B2`, `B3`, and `B+`) are individually
-traceable in the drawing and must not be electrically joined merely because
-they are routed as one harness.
+Exactly four implemented conductors cross the monitor boundary: `K_BUS`,
+`K_BAT`, `VMON+`, and `GND`. The complete monitor-only wiring, breakout
+modification, fuse roles, I2C connections, de-energized checks, and diagrams are
+in [`docs/wiring.md`](docs/wiring.md).
 
-This is a **conceptual single-line overview**, not a construction-ready wiring
-plan. It does not specify cable or bus-bar ampacity, fault-current withstand,
-fuse and breaker ratings, isolation, earthing, neutral switching, enclosure
-layout, disconnects, equipment approvals, or code compliance. Those details
-require installation-specific engineering and appropriately qualified review.
+[![Detailed high-side battery-monitor schematic](hardware/battery-monitor-schematic.svg)](hardware/battery-monitor-schematic.svg)
 
-### SOC-monitor installation conductors
+The drawing is an electrical schematic, not an approved cable, PCB, enclosure,
+fuse, physical-placement, or code-compliance design.
 
-Exactly four implemented conductors cross the SOC-monitor boundary:
+## Quick start
 
-| Logical ID | Monitor connection | Installation connection                      | Role                               |
-| ---------- | ------------------ | -------------------------------------------- | ---------------------------------- |
-| `K_BUS`    | `VIN+`             | Bus-side shunt Kelvin point through `F1`     | Dedicated positive-side sense lead |
-| `K_BAT`    | `VIN-`             | Battery-side shunt Kelvin point through `F2` | Dedicated battery-side sense lead  |
-| `VMON+`    | `+12V IN`          | Protected DC+ bus through `F3`               | Monitor supply input               |
-| `GND`      | `P- ref`           | Protected DC- bus / BMS `P-`                 | Non-isolated monitor reference     |
+Use [`docs/getting-started.md`](docs/getting-started.md) for explanations and
+success criteria. The compact path is:
 
-`F1` and `F2` protect thin Kelvin leads; `F3` protects the monitor supply.
-Keep all three paths electrically separate. In particular, never use a Kelvin
-lead to carry DC/DC supply current: lead and fuse voltage drop would bias the
-shunt measurement.
+1. Read the visible safety boundary and complete the de-energized checks in
+   [`docs/wiring.md`](docs/wiring.md).
+2. Review [`packages/battery-config.yaml`](packages/battery-config.yaml) against
+   the exact as-built hardware.
+3. Copy the secrets fixture and replace every placeholder:
 
-### Intentional reversed ATS sequence
+   ```sh
+   cp secrets.example.yaml secrets.yaml
+   ```
 
-The overview intentionally assigns the ATS inputs as `NORMAL = inverter` and
-`RESERVE = mains`. This is not the conventional label assignment. The required
-sequence is:
+4. Create the supported environment and build:
 
-1. **Mains available:** the mains-sensing relay is energized, its normally
-   closed dry contact is open, the inverter is disabled, and the ATS supplies
-   the load from available `RESERVE` mains.
-2. **Mains missing:** the sensing relay drops out, its NC contact closes, the
-   inverter starts, and the ATS transfers to available `NORMAL` inverter
-   output.
-3. **Mains restored:** the relay energizes, the NC contact opens, the inverter
-   stops, and the ATS returns to `RESERVE` mains.
+   ```sh
+   python3 -m venv .venv
+   . .venv/bin/activate
+   python -m pip install --upgrade pip
+   python -m pip install "esphome==2026.8.0"
+   python3 tests/validate_repository.py
+   esphome config battery-monitor.yaml
+   esphome compile battery-monitor.yaml
+   ```
 
-Use only an appropriately rated, mechanically/electrically interlocked
-break-before-make ATS. The dashed delay/anti-chatter timer is a possible future
-addition for unstable mains. Transfer interruption depends on the ATS,
-inverter, sensing, and timing behavior; this design does **not** promise a
-seamless or UPS-grade transfer.
+5. Flash over USB in a safe low-energy setup:
 
-### Charger-control status
+   ```sh
+   esphome run battery-monitor.yaml
+   ```
 
-The current firmware publishes its charge-stop condition through ESPHome and
-Home Assistant. The implemented automation path is Home Assistant commanding a
-Wi-Fi smart plug or equivalent suitably rated AC control relay. This path
-depends on Wi-Fi, Home Assistant, and the controlled device, so it supplements
-rather than replaces charger and BMS protection.
+6. Verify reliable boot, INA219 `0x40`, OLED `0x3C`, finite measurements, and no
+   unexplained errors.
+7. Add the device using
+   [`docs/home-assistant-setup.md`](docs/home-assistant-setup.md).
+8. Complete and retain the applicable acceptance record in
+   [`docs/commissioning.md`](docs/commissioning.md) before relying on measurements
+   or connecting real supplementary control actions.
 
-The dashed `CHARGER_ENABLE` route is a future alternative: a not-yet-implemented
-monitor output would operate an isolated low-energy relay connected to a
-charger enable input. It is **not present in the current hardware or firmware**,
-and it must not be interpreted as a second simultaneous command path.
-
-## High-side SOC monitor wiring
-
-### Companion monitor schematic
-
-[![Planned ESPHome high-side battery monitor schematic](hardware/battery-monitor-schematic.svg)](hardware/battery-monitor-schematic.svg)
-
-The editable [CircuitikZ source](hardware/battery-monitor-schematic.tex) is the
-source of truth for this detailed companion drawing; the checked-in
-[SVG rendering](hardware/battery-monitor-schematic.svg) is provided for GitHub
-and other documentation viewers. Unlike the system overview, this drawing
-shows the internal monitor connections among the protected supply, INA219
-breakout, ESP32-C3, and OLED. Future contactor drivers, alternate current
-monitors, and precision voltage channels from the evolution plan are
-intentionally omitted.
-
-Functional boards are rendered as reusable module symbols with explicit named
-boundary ports rather than misleading DIP/QFP package outlines. The generated
-SVG also includes an opaque canvas fitted to the complete diagram bounding box,
-including edge labels, so it remains legible on both light and dark themes.
-
-This is an electrical connection schematic, not a PCB, enclosure, cable-sizing,
-fuse-selection, or physical-placement drawing. In particular:
-
-- the red path is the high-current path, which passes through only the external
-  shunt and appropriately rated protection/conductors;
-- `F1` and `F2` are separate thin-wire protection devices mounted close to the
-  two energized Kelvin taps;
-- the INA219 breakout's onboard differential shunt is electrically isolated;
-- `F3` protects the nominal `+12 V` input to the monitor's DC/DC supply, taken
-  from the measured bus side so monitor consumption is included in discharge
-  current;
-- the regulated `+3V3` lane supplies the INA219, ESP32-C3, and OLED; its bridge
-  symbols cross the two Kelvin leads without connecting to them;
-- SDA and SCL remain separate electrical nets inside one shared, multidrop I2C
-  bus; each module connects to that bus rather than to another module;
-- all ground symbols are the common battery-negative reference in this
-  non-isolated design.
-
-See the [fuse-selection guide](docs/fuse-selection.md) before choosing parts.
-Its provisional starting points are `0.5 A` fast-acting for each Kelvin lead
-(`F1`/`F2`) and `1 A` time-delay for the monitor-supply input (`F3`), but only
-after wire ampacity, temperature/inrush derating, maximum DC voltage, and
-prospective battery fault current have been verified against the fuse **and
-holder** datasheets. `F_MAIN` has no project default; the shunt's `500 A` range
-and the battery's `300 Ah` capacity are not fuse-sizing values.
-
-### Main current path
-
-Install the shunt in the positive conductor:
-
-```text
-charger/load positive bus ── VIN+ [500 A / 75 mV shunt] VIN− ── battery positive
-common negative bus ─────────────────────────────────────────── battery negative
-```
-
-`VIN+` and `VIN-` above identify the two external-shunt sense sides, not a path
-through the INA219 PCB. With this orientation:
-
-- charging current flows from `VIN+` to `VIN-` and is published as positive;
-- discharging current flows from `VIN-` to `VIN+` and is published as negative;
-- the INA219 bus-voltage channel measures the battery-side `VIN-` point relative
-  to common negative, so it reports battery voltage;
-- ESP32-C3 ground, INA219 ground, OLED ground, and battery/common negative must
-  share the required reference for this non-isolated design.
-
-The default design is suitable for the documented 4S battery voltage. Do not
-exceed the voltage/common-mode ratings of the INA219 IC, breakout, power supply,
-or ESP32-C3. The ESPHome INA219 configuration value is not permission to exceed
-hardware ratings.
-
-### Kelvin sense wiring
-
-Use two dedicated sense connections directly at the external shunt terminals:
-
-```text
-external shunt bus-side sense point     ── fuse ── INA219 VIN+
-external shunt battery-side sense point ── fuse ── INA219 VIN−
-```
-
-Requirements:
-
-1. Attach each Kelvin lead directly to its shunt sense point, not farther along
-   a high-current cable, bus bar, or lug.
-2. Keep both leads together, short, mechanically protected, and away from noisy
-   switching conductors where practical.
-3. Fuse each lead close to the energized shunt tap with a fuse and holder that
-   protect the thin wire and can safely interrupt the installation's DC fault
-   current.
-4. Never use a sense lead as a supply or load conductor.
-5. Verify polarity with a controlled low current before relying on SOC.
-
-### Isolate the breakout's onboard shunt
-
-The INA219 breakout's low-value onboard current-sense resistor must not remain
-connected across `VIN+` and `VIN-` when an external shunt is used. Depending on
-the board, isolate it by one of these documented board-specific methods:
-
-- desolder the onboard shunt resistor;
-- open a provided solder jumper;
-- cut the breakout manufacturer's documented link.
-
-Do not cut an unidentified trace. After modification, use the board schematic
-and a multimeter to confirm that the onboard resistor no longer forms a
-low-resistance bridge while each INA219 input still reaches its corresponding
-sense terminal.
-
-A typical `0.1 ohm` onboard resistor would carry:
-
-```text
-0.075 V / 0.1 ohm = 0.75 A
-```
-
-That current would flow through the thin Kelvin leads, fuses, connectors, and
-PCB traces. Their voltage drops would corrupt the measurement and change with
-temperature. Isolating the differential shunt does **not** disable INA219 bus
-voltage measurement.
-
-### ESP32-C3 I2C warning
-
-The inherited defaults use GPIO8 for SDA and GPIO9 for SCL. Both are ESP32-C3
-strapping pins, and many I2C modules include pull-up resistors. ESPHome therefore
-emits warnings for these pins. Validate reliable cold boot, reset, and recovery
-with the actual modules attached. If the hardware does not boot reliably, move
-I2C to suitable non-strapping pins in
-[`packages/battery-config.yaml`](packages/battery-config.yaml) and rebuild.
-
-## Firmware layout
-
-| Path                                                                 | Purpose                                                                  |
-| -------------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| [`battery-monitor.yaml`](battery-monitor.yaml)                       | Canonical package composition and ESP32 framework                        |
-| [`packages/battery-config.yaml`](packages/battery-config.yaml)       | Battery, shunt, polarity, pin, timing, and rule defaults                 |
-| [`packages/connectivity.yaml`](packages/connectivity.yaml)           | Wi-Fi, encrypted API, OTA, time, and diagnostics                         |
-| [`packages/measurement.yaml`](packages/measurement.yaml)             | INA219 measurements, sign normalization, freshness, and current mode     |
-| [`packages/soc.yaml`](packages/soc.yaml)                             | Coulomb counting, checkpoints, validity, and manual anchors              |
-| [`packages/soc-rules.yaml`](packages/soc-rules.yaml)                 | Hysteretic conditions and durable event journal                          |
-| [`packages/display.yaml`](packages/display.yaml)                     | SSD1306 pages                                                            |
-| [`include/battery_monitor_types.h`](include/battery_monitor_types.h) | Fixed-record persistence and rule helpers                                |
-| [`assets/fonts/`](assets/fonts/)                                     | Vendored Roboto Mono font and OFL license                                |
-| [`docs/fuse-selection.md`](docs/fuse-selection.md)                   | Fuse parameters, provisional targets, calculations, and selection record |
-
-The three `shunt*.yaml` files are obsolete prototypes retained only until the
-canonical firmware completes hardware acceptance. Do not use them for a new
-installation.
-
-## Configure secrets
-
-Copy the valid-shaped example and replace every value:
-
-```sh
-cp secrets.example.yaml secrets.yaml
-```
-
-Generate credentials where indicated in the fixture:
-
-```sh
-openssl rand -base64 32  # Home Assistant API encryption key
-openssl rand -base64 24  # example source for an OTA password
-```
+GPIO8/GPIO9 strapping warnings are expected with the default assignment.
+Compiler warnings, missing assets/includes, schema errors, or unexplained I2C
+errors are not.
 
 Keep `secrets.yaml` private. It is intentionally ignored by version control.
-Never commit real Wi-Fi, API, fallback AP, or OTA credentials.
+Never commit Wi-Fi, native API, fallback AP, or OTA credentials.
 
-## Install, validate, and compile
-
-Use the supported ESPHome release:
-
-```sh
-python3 -m venv .venv
-. .venv/bin/activate
-python -m pip install --upgrade pip
-python -m pip install "esphome==2026.8.0"
-```
-
-Validate and compile the canonical entry point:
-
-```sh
-esphome config battery-monitor.yaml
-esphome compile battery-monitor.yaml
-```
-
-GPIO8/GPIO9 strapping warnings are expected with the default pin assignment;
-compiler warnings or missing includes/assets are not.
-
-## Flash and update
-
-For the first installation, connect the ESP32-C3 over USB and run:
-
-```sh
-esphome run battery-monitor.yaml
-```
-
-Select the serial device when prompted. After the node has joined Wi-Fi and has
-been added to Home Assistant, later runs can use the discovered network target
-for encrypted OTA updates. An explicit host can also be selected:
-
-```sh
-esphome run battery-monitor.yaml --device battery-monitor.local
-```
-
-Do not flash while the wiring is in an unsafe or partially assembled state.
-
-## First start and SOC behavior
+## Fresh-device SOC behavior
 
 On a genuinely fresh device:
 
-1. Voltage, current, power, and current-mode measurements start immediately.
-2. Trusted `State of Charge` is unavailable and `SOC Valid` is off.
-3. The unbounded diagnostic estimate and remaining amp-hours continue to track.
-4. Rule conditions remain unavailable, and crossing events are suppressed.
-5. Establish a known endpoint, then press `Set Battery Full` or
-   `Set Battery Empty` in Home Assistant.
+1. voltage, current, power, and current mode can begin immediately;
+2. trusted State of Charge is unavailable and SOC Valid is off;
+3. the diagnostic unbounded estimate and Remaining Capacity can still track;
+4. rule conditions remain unavailable and crossing events are suppressed; and
+5. the OLED displays `SOC NOT SET`.
 
-Only anchor full or empty when the battery is independently known to be at that
-endpoint under the battery/BMS manufacturer's procedure. The buttons do not
-detect or enforce safe cell voltage.
+This is intentional: an unanchored value must not masquerade as a trusted empty
+battery.
 
-The accumulator uses:
+> **Manual-anchor warning:** Set Battery Full and Set Battery Empty do not inspect
+> cell voltage, temperature, BMS state, charger state, current stability, or
+> manufacturer endpoint criteria. Use them only when the battery is independently
+> known to be at a manufacturer-qualified full or empty endpoint.
+
+The first-use procedure and guarded dashboard layout are in
+[`docs/home-assistant-setup.md`](docs/home-assistant-setup.md).
+
+<details>
+<summary>How unbounded SOC works</summary>
+
+Firmware estimates remaining charge by adding measured charging current and
+subtracting measured discharging current over time. Positive charge current is
+adjusted by Charging Efficiency; negative discharge current is not.
 
 ```text
-delta_Ah = current_A * elapsed_seconds / 3600
-```
-
-Charging efficiency is applied only to positive charging current. Negative
-discharging current removes amp-hours without that compensation. SOC is:
-
-```text
+delta_Ah = effective_current_A * elapsed_seconds / 3600
 SOC_percent = remaining_Ah / rated_capacity_Ah * 100
 ```
 
-It is deliberately not clamped to 0-100%. Values outside the configurable
-plausibility range remain visible and are marked suspect because they are useful
-evidence of capacity, offset, gain, or anchoring error.
+SOC is deliberately not clamped to 0–100%. An out-of-range value remains visible
+and turns on SOC Suspect because it can reveal capacity, offset, gain, efficiency,
+anchoring, or power-loss error. It does not replace cell-level BMS evidence.
 
-Changing `Rated Battery Capacity` rescales remaining amp-hours so the current
-unbounded SOC percentage is preserved. `Invalidate SOC` removes trust and makes
-the authoritative SOC/rule conditions unavailable while preserving the
-diagnostic estimate.
+Changing Rated Battery Capacity rescales Remaining Capacity to preserve the
+current unbounded percentage. Invalidate SOC preserves the diagnostic estimate
+while making trusted SOC and authoritative rule conditions unavailable.
 
-## Persistence and abrupt power loss
+</details>
 
-Live amp-hours update at measurement cadence and are not written to flash every
-second. With the defaults:
+<details>
+<summary>Persistence and abrupt monitor power loss</summary>
 
-- the live value is staged into a checkpoint every 60 seconds;
-- restored records are checked for changes every 1 second;
-- physical preference writes are coalesced for 5 seconds;
-- manual anchors, capacity edits, and invalidation stage a checkpoint
-  immediately, but the physical flash write is still delayed by polling and
-  coalescing;
-- graceful shutdown stages another checkpoint, but unplugging power cannot rely
-  on a graceful-shutdown callback.
+Live Ah updates at measurement cadence but is not written to flash every second.
+With defaults, firmware stages a checkpoint every 60 seconds, polls restored
+records every 1 second, and coalesces physical preference writes for 5 seconds.
 
-An abrupt power loss can therefore lose approximately the latest checkpoint
-interval plus scheduling/polling/write-coalescing delay: roughly 66 seconds with
-the defaults. The exact loss depends on when power fails. After reboot, the first
-valid current sample establishes a timing baseline; firmware does not integrate
-across downtime.
+An abrupt monitor power loss can therefore lose approximately 66 seconds of
+recent accounting plus normal scheduling uncertainty. At constant current:
 
-## Calibration and acceptance
+```text
+approximate maximum lost Ah = abs(current_A) * 66 / 3600
+```
 
-Before relying on the monitor:
+The first valid current sample after reboot establishes a new timing baseline;
+firmware never integrates across downtime. See
+[`docs/architecture.md`](docs/architecture.md) for checkpoint details.
 
-1. Compare `Battery Voltage` with a trusted multimeter at the battery terminals
-   over the expected voltage range.
-2. Compare charging and discharging current with a suitable calibrated DC clamp
-   meter or reference instrument at several controlled currents.
-3. Confirm positive current while charging and negative current while
-   discharging. If the verified raw sign is reversed, change
-   `current_polarity_multiplier` to `-1.0` and rebuild; do not change downstream
-   formulas independently.
-4. With no intentional current, observe raw current and shunt voltage long
-   enough to characterize offset and drift. The charging/idle/discharging
-   deadband affects labels only; it does not discard current from integration.
-5. Exercise manual anchors, reboot restoration, stale-sensor behavior, OLED
-   pages, rule thresholds, hysteresis clearing, API outage, and reconnect replay.
+</details>
 
-The complete bench and hardware checklist is in
-[`docs/commissioning.md`](docs/commissioning.md). Do not remove the obsolete
-prototypes or enable real charger/load actions until that checklist passes.
+## Home Assistant authority model
 
-## Home Assistant
+Persistent rule-condition entities are the source of truth for supplementary
+charger/load reconciliation. Crossing events are one-shot notification hints and
+can be missed while Home Assistant is offline. Automations must require SOC Rule
+Engine Ready and handle unknown/unavailable conditions explicitly.
 
-Persistent condition entities are authoritative. Crossing events are
-notification/reconciliation hints and can be missed during an extended outage.
-On each native-API reconnect, firmware replays only the most recent durable
-record with the original sequence and a `replay` label; consumers must
-deduplicate by sequence.
+No real charger/load automation has been validated for this prototype. Test any
+adapted example with logging or a harmless test switch before connecting external
+equipment, and preserve independent safe behavior for network, monitor, sensor,
+driver, and Home Assistant failures.
 
-The complete entity contract, event payload, limitations, and safe example
-automations are documented in
-[`docs/home-assistant.md`](docs/home-assistant.md).
+<details>
+<summary>Reconnect replay and event deduplication</summary>
 
-## Design plans
+Firmware stores only the latest crossing record. On each native API connection,
+it republishes that record with the original nonzero sequence and a replay label.
+A replay is not a new crossing. Consumers deduplicate equal sequences and
+reconcile the current persistent condition.
 
-- [`plans/01-stabilization-plan.md`](plans/01-stabilization-plan.md) defines the
-  approved MVP and acceptance criteria.
-- [`plans/02-evolution-plan.md`](plans/02-evolution-plan.md) covers calibration,
-  qualified endpoints, capacity learning, improved measurement hardware, and
-  future fail-safe local contactor control.
-- [`plans/03-local-tooling-plan.md`](plans/03-local-tooling-plan.md) defines the
-  local rendering and repository-check interface.
-- [`plans/04-system-installation-diagram-plan.md`](plans/04-system-installation-diagram-plan.md)
-  records the reviewed system topology and diagram acceptance criteria.
+The journal is not a lossless queue: several crossings during a long outage
+cannot all be replayed. The complete contract and conservative automation
+examples are in [`docs/home-assistant.md`](docs/home-assistant.md).
 
-Repository checks, development tooling, schematic generation, and contribution
-workflow are documented separately in [`CONTRIBUTING.md`](CONTRIBUTING.md).
+</details>
+
+## Documentation map
+
+### Build and operation
+
+- [`docs/getting-started.md`](docs/getting-started.md) — prerequisites, build,
+  flash, first-boot checks, and success criteria;
+- [`docs/wiring.md`](docs/wiring.md) — monitor-only wiring, protection boundaries,
+  diagrams, and de-energized inspection;
+- [`docs/home-assistant-setup.md`](docs/home-assistant-setup.md) — discovery,
+  encryption, starter dashboard, runtime settings, and safe SOC anchoring;
+- [`docs/troubleshooting.md`](docs/troubleshooting.md) — symptom-oriented safe
+  diagnosis and stop-work criteria; and
+- [`docs/glossary.md`](docs/glossary.md) — plain-language terminology.
+
+### Engineering references
+
+- [`docs/architecture.md`](docs/architecture.md) — package/data flow, measurement
+  validity, SOC, persistence, rules, events, and implemented/deferred scope;
+- [`docs/home-assistant.md`](docs/home-assistant.md) — complete entity/event
+  contract and advanced automation examples;
+- [`docs/fuse-selection.md`](docs/fuse-selection.md) — DC protection inputs and
+  selection record; and
+- [`docs/commissioning.md`](docs/commissioning.md) — hardware and integration
+  acceptance procedure.
+
+### Maintainers
+
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) — checks, document ownership, licensing,
+  and schematic workflow;
+- [`Taskfile.yml`](Taskfile.yml) — recurring local command interface; and
+- [`tests/validate_repository.py`](tests/validate_repository.py) — deterministic
+  clean-checkout and documentation invariants.
+
+<details>
+<summary>Firmware package layout</summary>
+
+| Path                                                                 | Purpose                                                              |
+| -------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| [`battery-monitor.yaml`](battery-monitor.yaml)                       | Canonical composition and ESP32 framework                            |
+| [`packages/battery-config.yaml`](packages/battery-config.yaml)       | Hardware, timing, profile, and rule defaults                         |
+| [`packages/connectivity.yaml`](packages/connectivity.yaml)           | Wi-Fi, encrypted API, OTA, time, and diagnostics                     |
+| [`packages/measurement.yaml`](packages/measurement.yaml)             | INA219 measurements, sign normalization, freshness, and current mode |
+| [`packages/soc.yaml`](packages/soc.yaml)                             | Unbounded Ah/SOC, checkpoints, validity, and manual anchors          |
+| [`packages/soc-rules.yaml`](packages/soc-rules.yaml)                 | Hysteretic conditions and latest-event journal                       |
+| [`packages/display.yaml`](packages/display.yaml)                     | SSD1306 status pages                                                 |
+| [`include/battery_monitor_types.h`](include/battery_monitor_types.h) | Fixed-record persistence and pure rule/SOC helpers                   |
+
+</details>
+
+<details>
+<summary>System context and design records</summary>
+
+The wider conceptual battery/BMS/charger/inverter/ATS view is available in
+[`hardware/battery-system-installation.svg`](hardware/battery-system-installation.svg).
+It is not a construction-ready installation plan. Its unusual ATS labeling,
+future local charger-enable route, and engineering limitations are explained in
+[`docs/wiring.md`](docs/wiring.md).
+
+</details>
+
+## License and acknowledgement
+
+Project-authored source code and documentation are licensed under
+**GPL-3.0-only**. See [`LICENSE`](LICENSE).
+
+Copyright (C) 2026 primetalk contributors.
+
+Third-party assets retain their own licenses. The vendored Roboto Mono font is
+licensed under the SIL Open Font License in
+[`assets/fonts/OFL.txt`](assets/fonts/OFL.txt).
+
+The project idea was inspired by
+[jurgen2005/esphome-shunt](https://github.com/jurgen2005/esphome-shunt). This
+repository is intended as an independent implementation; no source code or
+documentation from that unlicensed repository is known to be included, and this
+project does not claim license or permission on its behalf.

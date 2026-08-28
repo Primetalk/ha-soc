@@ -181,6 +181,10 @@ text_sensor:
     update_interval: never
 
 button:
+  # Manual anchors are operator assertions, not endpoint detectors. Firmware does
+  # not inspect cell voltage, temperature, BMS/charger state, current stability,
+  # or manufacturer criteria. Use Full/Empty only at an independently qualified
+  # endpoint; use Invalidate SOC whenever the estimate should not be trusted.
   - platform: template
     name: Set Battery Full
     id: set_battery_full
@@ -201,7 +205,9 @@ button:
                 id(soc_checkpoint), id(soc_remaining_ah_live),
                 id(rated_capacity_ah).state, true);
             id(soc_rules_armed) = false;
-            ESP_LOGI("soc", "SOC manually anchored to full");
+            ESP_LOGI("soc",
+                     "SOC manually anchored to full from operator assertion; "
+                     "firmware did not verify the battery endpoint");
         - script.execute: publish_soc_state
         - script.execute: evaluate_soc_rules
 
@@ -219,7 +225,9 @@ button:
                 id(soc_checkpoint), 0.0f,
                 id(rated_capacity_ah).has_state() ? id(rated_capacity_ah).state : NAN, true);
             id(soc_rules_armed) = false;
-            ESP_LOGI("soc", "SOC manually anchored to empty");
+            ESP_LOGI("soc",
+                     "SOC manually anchored to empty from operator assertion; "
+                     "firmware did not verify the battery endpoint");
         - script.execute: publish_soc_state
         - script.execute: evaluate_soc_rules
 
@@ -236,7 +244,9 @@ button:
                 id(soc_checkpoint), id(soc_remaining_ah_live),
                 id(rated_capacity_ah).has_state() ? id(rated_capacity_ah).state : NAN, false);
             id(soc_rules_armed) = false;
-            ESP_LOGW("soc", "SOC manually invalidated; estimate remains visible for diagnostics");
+            ESP_LOGW("soc",
+                     "Trusted SOC manually invalidated; unbounded estimate remains "
+                     "visible for diagnostics and SOC rules are unavailable");
         - script.execute: publish_soc_state
         - script.execute: evaluate_soc_rules
 

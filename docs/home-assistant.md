@@ -1,8 +1,14 @@
-# Home Assistant contract
+# Home Assistant advanced contract
 
-This document describes the entities and events exported by
+If you are adding the device for the first time, start with
+[`home-assistant-setup.md`](home-assistant-setup.md). This advanced reference
+describes the entities and events exported by
 [`battery-monitor.yaml`](../battery-monitor.yaml). It also provides conservative
 automation patterns for reconciliation and event deduplication.
+
+> **Prototype only:** No real charger or load automation has been validated.
+> Treat every automation below as an example to adapt and test with logging or a
+> harmless test switch, not as permission to control battery equipment.
 
 The examples assume Home Assistant assigned the default `battery_monitor_*`
 entity IDs. Entity IDs can differ after discovery, renaming, or migration. Check
@@ -25,6 +31,12 @@ These entities and examples do not replace a BMS, battery fuse, charger
 protection, load protection, hardwired interlocks, or correctly rated switching
 hardware. A Home Assistant outage, Wi-Fi failure, ESP32 fault, or stale sensor
 must not defeat the battery's independent safety layers.
+
+The monitor has not completed the physical commissioning checklist. Do not
+connect any example to real charger or load control until the monitor and the
+complete control path have passed an installation-specific engineering review,
+failure analysis, and applicable acceptance tests in
+[`commissioning.md`](commissioning.md).
 
 ## Naming and identity
 

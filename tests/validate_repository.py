@@ -5,10 +5,12 @@ from __future__ import annotations
 
 import base64
 import binascii
+import html
 import re
 import subprocess
 import sys
 from pathlib import Path
+from urllib.parse import unquote, urlsplit
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -22,17 +24,29 @@ EXPECTED_PACKAGES = {
     "packages/display.yaml",
 }
 
+PUBLIC_GUIDES = {
+    "docs/architecture.md",
+    "docs/getting-started.md",
+    "docs/glossary.md",
+    "docs/home-assistant-setup.md",
+    "docs/troubleshooting.md",
+    "docs/wiring.md",
+}
+
 REQUIRED_PATHS = {
     ".gitignore",
     ".github/workflows/esphome.yaml",
     ".github/workflows/hardware-schematic.yaml",
     "CONTRIBUTING.md",
+    "LICENSE",
+    "README.md",
     "Taskfile.yml",
     "battery-monitor.yaml",
     "secrets.example.yaml",
     "include/battery_monitor_types.h",
     "assets/fonts/RobotoMono-Variable.ttf",
     "assets/fonts/OFL.txt",
+    *PUBLIC_GUIDES,
     "docs/home-assistant.md",
     "docs/commissioning.md",
     "docs/fuse-selection.md",
@@ -121,6 +135,15 @@ EXPECTED_SECRET_REFERENCES = {
     "ota_password": "ota_password",
 }
 
+GPL_EXPRESSION = "GPL-3.0-only"
+COPYRIGHT_NOTICE = "Copyright (C) 2026 primetalk contributors"
+MARKDOWN_LINK_TARGET = re.compile(r"\]\(\s*(<[^>\n]+>|[^)\n]*?)\s*\)")
+MARKDOWN_HEADING = re.compile(r"^\s{0,3}#{1,6}\s+(.+?)\s*#*\s*$")
+HTML_ANCHOR = re.compile(
+    r"<(?:a|[a-z][a-z0-9-]*)\b[^>]*\b(?:id|name)=[\"']([^\"']+)[\"']",
+    re.IGNORECASE,
+)
+
 
 class Checks:
     def __init__(self) -> None:
@@ -147,6 +170,80 @@ def read_text(relative_path: str) -> str:
     return (ROOT / relative_path).read_text(encoding="utf-8")
 
 
+def public_markdown_paths() -> list[str]:
+    paths = sorted(ROOT.glob("*.md")) + sorted((ROOT / "docs").rglob("*.md"))
+    return [path.relative_to(ROOT).as_posix() for path in paths]
+
+
+def markdown_without_fenced_code(text: str) -> tuple[str, bool]:
+    """Return Markdown with fenced blocks blanked while preserving line numbers."""
+    output: list[str] = []
+    fence_character = ""
+    fence_length = 0
+
+    for line in text.splitlines(keepends=True):
+        marker = re.match(r"^\s*(`{3,}|~{3,})(.*)$", line.rstrip("\r\n"))
+        if not fence_character:
+            if marker is None:
+                output.append(line)
+                continue
+            fence_character = marker.group(1)[0]
+            fence_length = len(marker.group(1))
+            output.append("\n" if line.endswith("\n") else "")
+            continue
+
+        closing = re.match(
+            rf"^\s*{re.escape(fence_character)}{{{fence_length},}}\s*$",
+            line.rstrip("\r\n"),
+        )
+        if closing is not None:
+            fence_character = ""
+            fence_length = 0
+        output.append("\n" if line.endswith("\n") else "")
+
+    return "".join(output), not fence_character
+
+
+def markdown_link_targets(text: str) -> list[tuple[int, str]]:
+    without_code, _ = markdown_without_fenced_code(text)
+    targets: list[tuple[int, str]] = []
+    for match in MARKDOWN_LINK_TARGET.finditer(without_code):
+        target = match.group(1).strip()
+        if target.startswith("<") and target.endswith(">"):
+            target = target[1:-1].strip()
+        else:
+            # A non-angle-bracket destination cannot contain unescaped spaces;
+            # anything after one is an optional Markdown link title.
+            target = target.split(maxsplit=1)[0] if target else ""
+        targets.append((without_code.count("\n", 0, match.start()) + 1, html.unescape(target)))
+    return targets
+
+
+def github_heading_slug(heading: str) -> str:
+    heading = re.sub(r"!?(?:\[([^\]]*)\])\([^)]*\)", r"\1", heading)
+    heading = re.sub(r"<[^>]+>", "", heading)
+    heading = html.unescape(heading).replace("`", "").strip().lower()
+    heading = re.sub(r"[^\w\s-]", "", heading, flags=re.UNICODE)
+    return re.sub(r"\s+", "-", heading)
+
+
+def markdown_anchors(text: str) -> set[str]:
+    without_code, _ = markdown_without_fenced_code(text)
+    anchors = {unquote(anchor) for anchor in HTML_ANCHOR.findall(without_code)}
+    slug_counts: dict[str, int] = {}
+    for line in without_code.splitlines():
+        match = MARKDOWN_HEADING.match(line)
+        if match is None:
+            continue
+        base_slug = github_heading_slug(match.group(1))
+        if not base_slug:
+            continue
+        count = slug_counts.get(base_slug, 0)
+        anchors.add(base_slug if count == 0 else f"{base_slug}-{count}")
+        slug_counts[base_slug] = count + 1
+    return anchors
+
+
 def parse_simple_quoted_yaml(relative_path: str) -> dict[str, str]:
     values: dict[str, str] = {}
     line_pattern = re.compile(r'^([a-zA-Z0-9_]+):\s*"([^"]*)"\s*$')
@@ -163,6 +260,87 @@ def check_required_paths(checks: Checks) -> None:
         checks.require(path.is_file(), f"required file is absent: {relative_path}")
         if path.is_file():
             checks.require(path.stat().st_size > 0, f"required file is empty: {relative_path}")
+
+
+def check_project_status_and_licensing(checks: Checks) -> None:
+    license_path = ROOT / "LICENSE"
+    if license_path.is_file():
+        license_text = license_path.read_text(encoding="utf-8")
+        checks.require(
+            re.search(
+                r"GNU GENERAL PUBLIC LICENSE\s+Version 3, 29 June 2007",
+                license_text,
+            )
+            is not None
+            and "END OF TERMS AND CONDITIONS" in license_text,
+            "LICENSE does not contain the canonical GNU GPL version 3 text",
+        )
+
+    licensing_documents = ("README.md", "CONTRIBUTING.md")
+    for relative_path in licensing_documents:
+        path = ROOT / relative_path
+        if not path.is_file():
+            continue
+        text = path.read_text(encoding="utf-8")
+        checks.require(
+            GPL_EXPRESSION in text,
+            f"{relative_path} is missing the exact {GPL_EXPRESSION} expression",
+        )
+        checks.require(
+            COPYRIGHT_NOTICE in text,
+            f"{relative_path} is missing the project copyright notice",
+        )
+
+    readme_path = ROOT / "README.md"
+    if not readme_path.is_file():
+        return
+    readme = readme_path.read_text(encoding="utf-8")
+    readme_opening = "\n".join(readme.splitlines()[:20]).lower()
+    checks.require(
+        "prototype only" in readme_opening,
+        "README must show prototype-only status within its first 20 lines",
+    )
+    checks.require(
+        "assets/fonts/OFL.txt" in readme,
+        "README does not preserve the separate Roboto Mono font-license reference",
+    )
+    checks.require(
+        "https://github.com/jurgen2005/esphome-shunt" in readme
+        and "independent implementation" in readme
+        and "does not claim license or permission" in readme,
+        "README acknowledgement does not preserve independent-implementation provenance",
+    )
+
+    linked_paths: set[str] = set()
+    for _, raw_target in markdown_link_targets(readme):
+        parsed = urlsplit(raw_target)
+        if parsed.scheme or parsed.netloc or not parsed.path:
+            continue
+        linked_paths.add(unquote(parsed.path))
+    for guide in sorted(PUBLIC_GUIDES):
+        checks.require(guide in linked_paths, f"README does not link required guide: {guide}")
+
+
+def check_public_current_state(checks: Checks) -> None:
+    forbidden_phrases = (
+        "obsolete prototype configuration",
+        "obsolete prototype yaml",
+        "prototype yaml files are retained",
+        "prototype yaml files remain",
+    )
+    obsolete_yaml_reference = re.compile(r"shunt[^\n)]*\.ya?ml", re.IGNORECASE)
+    for relative_path in public_markdown_paths():
+        text, _ = markdown_without_fenced_code(read_text(relative_path))
+        lowered = text.lower()
+        for phrase in forbidden_phrases:
+            checks.require(
+                phrase not in lowered,
+                f"stale current-state prototype claim appears in {relative_path}: {phrase}",
+            )
+        checks.require(
+            obsolete_yaml_reference.search(text) is None,
+            f"public current-state documentation references an obsolete shunt YAML in {relative_path}",
+        )
 
 
 def check_renderer_tooling(checks: Checks) -> None:
@@ -531,26 +709,107 @@ def check_ignore_policy(checks: Checks) -> None:
         )
 
 
-def check_markdown_fences(checks: Checks) -> None:
-    for relative_path in (
-        "README.md",
-        "CONTRIBUTING.md",
-        "docs/home-assistant.md",
-        "docs/commissioning.md",
-        "docs/fuse-selection.md",
-    ):
-        fence_count = sum(
-            1 for line in read_text(relative_path).splitlines() if line.startswith("```")
-        )
+def check_markdown_markup(checks: Checks) -> None:
+    disclosure_tag = re.compile(r"<\s*(/?)\s*(details|summary)\b[^>]*>", re.IGNORECASE)
+
+    for relative_path in public_markdown_paths():
+        text = read_text(relative_path)
+        without_code, fences_balanced = markdown_without_fenced_code(text)
         checks.require(
-            fence_count % 2 == 0,
+            fences_balanced,
             f"Markdown code fences are unbalanced in {relative_path}",
         )
+
+        stack: list[tuple[str, int]] = []
+        for match in disclosure_tag.finditer(without_code):
+            closing, raw_name = match.groups()
+            name = raw_name.lower()
+            line_number = without_code.count("\n", 0, match.start()) + 1
+            if not closing:
+                if name == "summary":
+                    checks.require(
+                        any(open_name == "details" for open_name, _ in stack),
+                        f"summary appears outside details in {relative_path}:{line_number}",
+                    )
+                stack.append((name, line_number))
+                continue
+
+            if not stack:
+                checks.failures.append(
+                    f"closing {name} has no opener in {relative_path}:{line_number}"
+                )
+                continue
+            open_name, open_line = stack.pop()
+            checks.require(
+                open_name == name,
+                f"closing {name} in {relative_path}:{line_number} does not match "
+                f"{open_name} opened at line {open_line}",
+            )
+
+        for open_name, line_number in stack:
+            checks.failures.append(
+                f"unclosed {open_name} tag in {relative_path}:{line_number}"
+            )
+
+
+def check_markdown_links(checks: Checks) -> None:
+    root = ROOT.resolve()
+    anchor_cache: dict[Path, set[str]] = {}
+
+    for relative_path in public_markdown_paths():
+        source = ROOT / relative_path
+        for line_number, raw_target in markdown_link_targets(read_text(relative_path)):
+            checks.require(
+                bool(raw_target),
+                f"empty Markdown link target in {relative_path}:{line_number}",
+            )
+            if not raw_target:
+                continue
+
+            parsed = urlsplit(raw_target)
+            # External URLs, mail links, and same-page anchors deliberately remain
+            # offline and outside local target checks.
+            if parsed.scheme or parsed.netloc or not parsed.path:
+                continue
+
+            decoded_path = unquote(parsed.path)
+            candidate = (source.parent / decoded_path).resolve()
+            try:
+                candidate.relative_to(root)
+            except ValueError:
+                checks.failures.append(
+                    f"local Markdown link escapes the repository in "
+                    f"{relative_path}:{line_number}: {raw_target}"
+                )
+                continue
+
+            checks.require(
+                candidate.is_file(),
+                f"local Markdown link target is absent in "
+                f"{relative_path}:{line_number}: {raw_target}",
+            )
+            if not candidate.is_file() or not parsed.fragment:
+                continue
+
+            fragment = unquote(html.unescape(parsed.fragment))
+            if candidate.suffix.lower() != ".md":
+                continue
+            anchors = anchor_cache.setdefault(
+                candidate,
+                markdown_anchors(candidate.read_text(encoding="utf-8")),
+            )
+            checks.require(
+                fragment in anchors,
+                f"local Markdown fragment is absent in "
+                f"{relative_path}:{line_number}: {raw_target}",
+            )
 
 
 def main() -> int:
     checks = Checks()
     check_required_paths(checks)
+    check_project_status_and_licensing(checks)
+    check_public_current_state(checks)
     check_renderer_tooling(checks)
     check_schematic_sources(checks)
     check_rendered_schematics(checks)
@@ -560,7 +819,8 @@ def main() -> int:
     check_canonical_identifiers(checks)
     check_tracked_artifacts(checks)
     check_ignore_policy(checks)
-    check_markdown_fences(checks)
+    check_markdown_markup(checks)
+    check_markdown_links(checks)
     return checks.finish()
 
 
