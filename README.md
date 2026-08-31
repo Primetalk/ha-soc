@@ -80,7 +80,7 @@ competence.
 | External shunt          | 500 A / 75 mV (`0.00015 ohm`)                        |
 | Display                 | SSD1306 128x64 I2C OLED                              |
 | INA219 / OLED addresses | `0x40` / `0x3C`                                      |
-| I2C pins                | GPIO8 SDA, GPIO9 SCL                                 |
+| I2C pins                | GPIO0 SDA, GPIO1 SCL                                 |
 | Supported ESPHome       | `2026.8.0`                                           |
 
 Hardware and battery defaults are centralized in
@@ -93,10 +93,14 @@ definition. Confirm the flash size, USB mode, regulator/input pin, GPIO labels,
 and schematic for the exact revision; SuperMini-branded boards do not necessarily
 share one layout.
 
-GPIO8 and GPIO9 are ESP32-C3 strapping pins, and I2C modules often include
-pull-ups. Repeatedly test cold boot, reset, and recovery with the actual modules.
-Move I2C to verified non-strapping pins and rebuild if the default hardware is
-unreliable.
+The defaults deliberately avoid the ESP32-C3 strapping pins GPIO2, GPIO8, and
+GPIO9. I2C modules often include pull-ups, which can drive a strapping pin while
+the chip samples its reset-time boot configuration. See Espressif's official
+[ESP32-C3 GPIO summary](https://docs.espressif.com/projects/esp-idf/en/stable/esp32c3/api-reference/peripherals/gpio.html#gpio-summary).
+Using GPIO0/GPIO1 for I2C prevents their simultaneous use as ADC inputs, while
+leaving GPIO4-GPIO7 free for the conventional external JTAG interface. Confirm
+the exact board revision and repeatedly test cold boot, reset, and recovery with
+the final modules attached.
 
 ## Monitor connection overview
 
@@ -162,9 +166,9 @@ success criteria. The compact path is:
    [`docs/commissioning.md`](docs/commissioning.md) before relying on measurements
    or connecting real supplementary control actions.
 
-GPIO8/GPIO9 strapping warnings are expected with the default assignment.
-Compiler warnings, missing assets/includes, schema errors, or unexplained I2C
-errors are not.
+The default GPIO0/GPIO1 assignment should not produce a strapping-pin warning.
+Treat any pin warning, compiler warning, missing asset/include, schema error, or
+unexplained I2C error as something to investigate.
 
 Keep `secrets.yaml` private. It is intentionally ignored by version control.
 Never commit Wi-Fi, native API, fallback AP, or OTA credentials.

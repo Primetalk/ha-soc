@@ -106,6 +106,13 @@ EXPECTED_IMPLEMENTED_MONITOR_PORTS = {
     "monitor-gnd",
 }
 
+EXPECTED_I2C_PINS = {
+    "i2c_sda_pin": "GPIO0",
+    "i2c_scl_pin": "GPIO1",
+}
+
+ESP32_C3_STRAPPING_PINS = {"GPIO2", "GPIO8", "GPIO9"}
+
 CANONICAL_TEXT_PATHS = {
     "battery-monitor.yaml",
     "include/battery_monitor_types.h",
@@ -495,6 +502,38 @@ def check_schematic_sources(checks: Checks) -> None:
         )
 
 
+def check_i2c_hardware_defaults(checks: Checks) -> None:
+    battery_config = read_text("packages/battery-config.yaml")
+    for substitution, expected_pin in EXPECTED_I2C_PINS.items():
+        match = re.search(
+            rf"^\s*{re.escape(substitution)}:\s*(GPIO[0-9]+)\s*(?:#.*)?$",
+            battery_config,
+            re.MULTILINE,
+        )
+        checks.require(
+            match is not None,
+            f"canonical I2C substitution is missing or malformed: {substitution}",
+        )
+        if match is None:
+            continue
+
+        actual_pin = match.group(1)
+        checks.require(
+            actual_pin == expected_pin,
+            f"canonical {substitution} must be {expected_pin}, found {actual_pin}",
+        )
+        checks.require(
+            actual_pin not in ESP32_C3_STRAPPING_PINS,
+            f"canonical {substitution} uses ESP32-C3 strapping pin {actual_pin}",
+        )
+
+    detailed_source = read_text("hardware/battery-monitor-schematic.tex")
+    checks.require(
+        r"{GPIO0: SDA\\GPIO1: SCL};" in detailed_source,
+        "detailed monitor schematic must label GPIO0 as SDA and GPIO1 as SCL",
+    )
+
+
 def check_rendered_schematics(checks: Checks) -> None:
     for source_path, svg_path in SCHEMATIC_PAIRS:
         source = ROOT / source_path
@@ -812,6 +851,7 @@ def main() -> int:
     check_public_current_state(checks)
     check_renderer_tooling(checks)
     check_schematic_sources(checks)
+    check_i2c_hardware_defaults(checks)
     check_rendered_schematics(checks)
     check_canonical_composition(checks)
     check_secrets_fixture(checks)

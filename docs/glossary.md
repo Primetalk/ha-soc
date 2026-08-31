@@ -257,8 +257,11 @@ A number identifying one device on the shared I2C bus. Repository defaults are
 ### Strapping pin
 
 An ESP32 pin whose voltage during reset helps choose a boot mode or startup
-configuration. External I2C pull-ups on the default GPIO8/GPIO9 can affect boot
-on some ESP32-C3 board revisions, so repeated cold-boot testing is required.
+configuration. GPIO2, GPIO8, and GPIO9 are ESP32-C3 strapping pins; external I2C
+pull-ups on those pins can affect the sampled boot state. The repository therefore
+defaults to non-strapping GPIO0/GPIO1. See Espressif's official
+[ESP32-C3 GPIO summary](https://docs.espressif.com/projects/esp-idf/en/stable/esp32c3/api-reference/peripherals/gpio.html#gpio-summary).
+Repeated cold-boot testing is still required for the complete hardware.
 
 ### Checkpoint
 

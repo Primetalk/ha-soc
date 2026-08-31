@@ -39,9 +39,9 @@ password, or the OTA password.
 **Symptom:** `esphome config battery-monitor.yaml` or compilation exits with an
 error, reports a missing local file, or emits an unexpected compiler warning.
 
-**Normal or abnormal:** GPIO8/GPIO9 strapping warnings are expected with the
-default pins. Missing includes/assets, schema errors, component errors, and
-compiler warnings are abnormal.
+**Normal or abnormal:** the default GPIO0/GPIO1 mapping should not emit a
+strapping-pin warning. Any pin warning, missing include/asset, schema error,
+component error, or compiler warning is abnormal.
 
 **Likely causes:**
 
@@ -49,6 +49,7 @@ compiler warnings are abnormal.
 - the virtual environment is inactive;
 - `secrets.yaml` is absent or contains invalid-shaped values;
 - a package, helper, font, or generated file is missing;
+- local substitutions assign I2C to unsuitable or conflicting pins;
 - a local edit introduced invalid YAML or C++; or
 - the checkout is incomplete.
 
@@ -84,7 +85,7 @@ abnormal; the device may expose its password-protected fallback hotspot.
 - unsupported band or signal conditions;
 - network isolation, filtering, or DHCP failure;
 - unstable ESP32 supply or reset loop;
-- strapping-pin/I2C pull-up interaction; or
+- a custom strapping-pin I2C mapping interacting with module pull-ups; or
 - the wrong firmware/board profile.
 
 **Safe checks:**
@@ -97,8 +98,9 @@ abnormal; the device may expose its password-protected fallback hotspot.
 6. Test repeated cold boot with the actual I2C modules attached.
 
 **Corrective action:** correct private credentials, network reachability, or the
-verified power/boot issue. If default I2C pins cause unreliable boot, use the
-strapping-pin procedure below.
+verified power/boot issue. If behavior changes with the I2C modules attached, use
+the cold-boot procedure below and verify that local pin substitutions have not
+reintroduced a strapping pin.
 
 **Record:** serial connection messages, reset reason if available, power
 measurements, router evidence, and board revision.
@@ -251,20 +253,26 @@ the display.
 **Symptom:** the controller boots only after repeated resets, behaves differently
 with I2C modules attached, or enters an unintended boot mode.
 
-**Normal or abnormal:** ESPHome warnings for default GPIO8/GPIO9 are expected;
-unreliable operation is not acceptable.
+**Normal or abnormal:** the default GPIO0/GPIO1 mapping should not produce an
+ESPHome strapping-pin warning. Any such warning and any unreliable operation are
+abnormal.
 
-**Likely causes:** pull-ups on strapping pins, unstable supply/inrush, wrong board
-profile/revision assumptions, USB/power interaction, or wiring faults.
+**Likely causes:** a custom I2C mapping with pull-ups on strapping pins, stale
+local substitutions, unstable supply/inrush, wrong board profile/revision
+assumptions, USB/power interaction, or wiring faults.
 
 **Safe checks:** use a low-energy test setup; record repeated cold starts with and
 without each I2C module; verify rail behavior; inspect module pull-ups and exact
 ESP32-C3 revision documentation.
 
-**Corrective action:** choose suitable non-strapping SDA/SCL pins verified for the
-actual board, update `i2c_sda_pin` and `i2c_scl_pin` in
+**Corrective action:** restore the canonical GPIO0 SDA/GPIO1 SCL mapping or choose
+other suitable non-strapping pins verified for the actual board, update
+`i2c_sda_pin` and `i2c_scl_pin` in
 [`../packages/battery-config.yaml`](../packages/battery-config.yaml), rebuild, and
-repeat firmware/boot/I2C commissioning.
+repeat firmware/boot/I2C commissioning. If a custom mapping is required, check
+the official Espressif
+[ESP32-C3 GPIO summary](https://docs.espressif.com/projects/esp-idf/en/stable/esp32c3/api-reference/peripherals/gpio.html#gpio-summary)
+before assigning pins.
 
 **Record:** test matrix, pin changes, pull-up values where known, rails, and logs.
 

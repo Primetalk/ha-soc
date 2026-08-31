@@ -154,14 +154,13 @@ esphome config battery-monitor.yaml
 esphome compile battery-monitor.yaml
 ```
 
-GPIO8/GPIO9 strapping-pin warnings are expected with the default pin assignment.
-Missing files, schema errors, component errors, or compiler warnings are not
-expected. Do not dismiss an unfamiliar warning merely because one documented
-warning is allowed.
+The default GPIO0/GPIO1 assignment avoids the ESP32-C3 strapping pins, so no
+strapping-pin warning is expected. Missing files, schema errors, component errors,
+compiler warnings, and pin warnings are also not expected. Investigate every
+warning rather than treating one as part of a normal build.
 
 **Success criterion:** repository validation, ESPHome configuration validation,
-and compilation all complete successfully, with only the understood default-pin
-warnings.
+and compilation all complete successfully without unexplained warnings.
 
 ## 5. Flash in a low-energy setup
 
@@ -187,9 +186,10 @@ Expected first-boot evidence includes:
 - the OLED shows measurements or a specific unavailable-state message rather than
   fabricated zeroes.
 
-If the board is unreliable with GPIO8/GPIO9, stop and follow the strapping-pin
-entry in [`troubleshooting.md`](troubleshooting.md). Do not proceed on the
-assumption that an intermittent boot will correct itself.
+If the board is unreliable with the final GPIO0/GPIO1 wiring, stop and follow the
+cold-boot entry in [`troubleshooting.md`](troubleshooting.md). Non-strapping pins
+remove one known hazard but do not eliminate supply, board-revision, pull-up, or
+wiring faults. Do not assume that intermittent boot will correct itself.
 
 **Success criterion:** the node boots reliably, both expected I2C devices are
 present, and logs contain no unexplained errors.
