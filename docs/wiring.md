@@ -178,6 +178,10 @@ described in [`fuse-selection.md`](fuse-selection.md).
 
 ## I2C wiring
 
+Photos of the connected OLED and its yellow/blue layout are in
+[`display.md`](display.md). The yellow band is a fixed physical region; changing
+text color in firmware cannot move it.
+
 For the alternative ESP8266 target, use GPIO4 SDA and GPIO5 SCL as described in
 [`esp8266-migration.md`](esp8266-migration.md). The table and schematics below
 describe the default ESP32-C3 controller.

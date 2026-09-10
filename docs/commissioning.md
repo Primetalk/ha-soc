@@ -397,7 +397,12 @@ Record failure method, durations, and observed transitions:
 
 - [ ] Measurement page shows voltage, signed current, signed power, and
       `CHG`/`LOAD`/`IDLE` mode.
-- [ ] Home Assistant/API status changes between `HA:ON` and `HA:off` as expected.
+- [ ] API connection status changes between `API:on` and `API:off` as expected;
+      account for logging clients as well as Home Assistant connections.
+- [ ] Each complete text line stays in one color band. With the default
+      180-degree mounting, only the bottom status line is yellow. Check both
+      mixed-case instructions and large/negative numeric values against
+      [`display.md`](display.md).
 - [ ] SOC page distinguishes not-set from a valid numeric SOC.
 - [ ] Unbounded values below 0% and above 100% render without clipping to the
       nominal range.

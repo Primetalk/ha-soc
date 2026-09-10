@@ -18,12 +18,47 @@ display:
     update_interval: 500ms
     lambda: |-
       const uint8_t page = (millis() / 5000U) % 3U;
+      // This panel has a fixed 16-row yellow band, not selectable pixel colors.
+      // At 180 degrees (the photographed mounting) yellow is at y=48..63;
+      // at 0 degrees it is at y=0..15. Use landscape rotation 0 or 180.
+      // Roboto Mono size 12 has a 16px line box; size 22 has a 29px line box.
+      const int body_y = ${oled_rotation} == 0 ? 16 : 0;
+      const int status_y = ${oled_rotation} == 0 ? 0 : 48;
+      const char *api = id(device_online).state ? "on" : "off";
+
+      // Keep unbounded SOC visible without clipping large or negative values.
+      // Fall back to the small font, then an explicit overflow indication.
+      const auto print_value = [&](const char *text) {
+        int x, y, width, height;
+        auto *font = id(display_font_large);
+        it.get_text_bounds(64, body_y, text, font, TextAlign::TOP_CENTER,
+                           &x, &y, &width, &height);
+        if (width > 128) font = id(display_font_small);
+        it.get_text_bounds(64, body_y, text, font, TextAlign::TOP_CENTER,
+                           &x, &y, &width, &height);
+        it.print(64, body_y, font, TextAlign::TOP_CENTER,
+                 width > 128 ? "OUT OF RANGE" : text);
+      };
 
       if (!id(measurement_healthy).state) {
-        it.printf(64, 12, id(display_font_small), TextAlign::TOP_CENTER, "SENSOR UNAVAILABLE");
-        it.printf(64, 34, id(display_font_small), TextAlign::TOP_CENTER, "Check INA219/I2C");
+        it.print(64, body_y, id(display_font_small), TextAlign::TOP_CENTER,
+                 "SENSOR");
+        it.print(64, body_y + 16, id(display_font_small), TextAlign::TOP_CENTER,
+                 "UNAVAILABLE");
+        it.print(64, body_y + 32, id(display_font_small), TextAlign::TOP_CENTER,
+                 "Check INA219/I2C");
+        it.printf(0, status_y, id(display_font_small), "SENSOR! API:%s", api);
         return;
       }
+
+      const float soc = battery_monitor::soc_percent(
+          id(soc_remaining_ah_live), id(rated_capacity_ah).state);
+      const bool suspect = battery_monitor::soc_is_suspect(
+          id(soc_valid_live), soc,
+          ${soc_plausible_min_percent}, ${soc_plausible_max_percent});
+      const bool rules_ready = id(soc_rule_engine_ready_live);
+      const char *soc_status = !id(soc_valid_live) ? "NOT SET"
+          : (suspect ? "SUSPECT" : (rules_ready ? "SOC OK" : "WAIT"));
 
       if (page == 0) {
         const char *flow = id(battery_current).state > ${current_state_deadband_amps}
@@ -31,30 +66,37 @@ display:
                                : (id(battery_current).state < -${current_state_deadband_amps}
                                       ? "LOAD"
                                       : "IDLE");
-        it.printf(0, 0, id(display_font_small), "BAT %s HA:%s", flow,
-                  id(device_online).state ? "ON" : "off");
-        it.printf(0, 16, id(display_font_large), "%.2fV", id(battery_voltage).state);
-        it.printf(0, 42, id(display_font_small), "%+.2fA  %+.0fW",
-                  id(battery_current).state, id(battery_power).state);
+        char voltage[48];
+        snprintf(voltage, sizeof(voltage), "%.2fV", id(battery_voltage).state);
+        print_value(voltage);
+        it.printf(64, body_y + 32, id(display_font_small), TextAlign::TOP_CENTER,
+                  "%+.2fA %+.0fW", id(battery_current).state, id(battery_power).state);
+        it.printf(0, status_y, id(display_font_small), "%s API:%s", flow, api);
       } else if (page == 1) {
         if (!id(soc_valid_live)) {
-          it.printf(64, 8, id(display_font_large), TextAlign::TOP_CENTER, "SOC NOT SET");
-          it.printf(64, 40, id(display_font_small), TextAlign::TOP_CENTER, "Use Set Full/Empty");
+          it.print(64, body_y, id(display_font_small), TextAlign::TOP_CENTER,
+                   "SOC NOT SET");
+          it.print(64, body_y + 16, id(display_font_small), TextAlign::TOP_CENTER,
+                   "Anchor when full");
+          it.print(64, body_y + 32, id(display_font_small), TextAlign::TOP_CENTER,
+                   "or empty via HA");
         } else {
-          const float soc = battery_monitor::soc_percent(
-              id(soc_remaining_ah_live), id(rated_capacity_ah).state);
-          it.printf(0, 0, id(display_font_small), "STATE OF CHARGE");
-          it.printf(64, 15, id(display_font_large), TextAlign::TOP_CENTER, "%.1f%%", soc);
-          it.printf(64, 45, id(display_font_small), TextAlign::TOP_CENTER, "%.1f / %.0f Ah",
-                    id(soc_remaining_ah_live), id(rated_capacity_ah).state);
+          char percent[48];
+          snprintf(percent, sizeof(percent), "%.1f%%", soc);
+          print_value(percent);
+          char capacity[64];
+          snprintf(capacity, sizeof(capacity), "%.1f/%.0fAh",
+                   id(soc_remaining_ah_live), id(rated_capacity_ah).state);
+          // Extreme unbounded estimates use compact notation, never clamp SOC.
+          if (strlen(capacity) > 18) {
+            snprintf(capacity, sizeof(capacity), "%.3g/%.0fAh",
+                     id(soc_remaining_ah_live), id(rated_capacity_ah).state);
+          }
+          it.print(64, body_y + 32, id(display_font_small), TextAlign::TOP_CENTER,
+                   capacity);
         }
+        it.printf(0, status_y, id(display_font_small), "%s API:%s", soc_status, api);
       } else {
-        const float soc = battery_monitor::soc_percent(
-            id(soc_remaining_ah_live), id(rated_capacity_ah).state);
-        const bool suspect = battery_monitor::soc_is_suspect(
-            id(soc_valid_live), soc,
-            ${soc_plausible_min_percent}, ${soc_plausible_max_percent});
-        const bool rules_ready = id(soc_rule_engine_ready_live);
         const char *stop_charge = rules_ready
             ? (battery_monitor::rule_latch_value(
                    id(soc_rule_latches),
@@ -70,10 +112,8 @@ display:
                    id(soc_rule_latches),
                    battery_monitor::RULE_LATCH_STOP_LOAD_FLAG) ? "ON" : "off")
             : "n/a";
-        it.printf(0, 0, id(display_font_small), "%s HA:%s",
-                  !id(soc_valid_live) ? "NOT SET" : (suspect ? "SUSPECT" : "OK"),
-                  id(device_online).state ? "ON" : "off");
-        it.printf(0, 17, id(display_font_small), "Charge stop: %s", stop_charge);
-        it.printf(0, 32, id(display_font_small), "Warning:     %s", capacity_warning);
-        it.printf(0, 47, id(display_font_small), "Load stop:   %s", stop_load);
+        it.printf(0, body_y, id(display_font_small), "Charge stop: %s", stop_charge);
+        it.printf(0, body_y + 16, id(display_font_small), "Warning:     %s", capacity_warning);
+        it.printf(0, body_y + 32, id(display_font_small), "Load stop:   %s", stop_load);
+        it.printf(0, status_y, id(display_font_small), "%s API:%s", soc_status, api);
       }

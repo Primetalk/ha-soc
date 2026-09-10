@@ -104,6 +104,20 @@ When firmware changes, validate and compile both entry points. See
 [`docs/esp8266-migration.md`](docs/esp8266-migration.md) for
 `battery-monitor-esp8266.yaml`.
 
+After generating or compiling firmware, check the OLED layout against its actual
+generated font metrics:
+
+```sh
+python3 tests/display_layout_test.py .esphome/build/battery-monitor/src/main.cpp
+```
+
+For ESP8266, use `.esphome/build/battery-monitor-esp8266/src/main.cpp`. The check
+executes the production display lambda through a drawing recorder and rejects
+off-screen, overlapping, or color-band-crossing text boxes across both landscape
+orientations and representative measurement/SOC/rule states. Firmware CI runs it
+after each target build. Visual and physical acceptance still follow
+[`docs/display.md`](docs/display.md).
+
 ## Render the hardware diagrams
 
 The two editable CircuitikZ sources and their generated artifacts are:

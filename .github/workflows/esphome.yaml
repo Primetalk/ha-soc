@@ -67,3 +67,6 @@ jobs:
             echo "Compiler warning detected in $ESPHOME_CONFIGURATION build" >&2
             exit 1
           fi
+
+      - name: Check OLED geometry with generated font metrics
+        run: python tests/display_layout_test.py ".esphome/build/${ESPHOME_CONFIGURATION%.yaml}/src/main.cpp"
