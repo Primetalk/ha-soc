@@ -20,6 +20,11 @@ The canonical ESPHome entry point is
 - a local SSD1306 status display; and
 - encrypted Home Assistant API, protected OTA, and a fallback setup hotspot.
 
+See [the OLED display guide](docs/display.md) for real prototype photo crops,
+enhanced documentation images, and a preview of the yellow/blue screen layout.
+
+[![Revised OLED layout, software preview](docs/images/display-layout-preview.svg)](docs/display.md)
+
 An alternative D1 mini / ESP8266 entry point is available in
 [`battery-monitor-esp8266.yaml`](battery-monitor-esp8266.yaml). Read the
 [ESP8266 migration guide](docs/esp8266-migration.md) for its different I2C pins,

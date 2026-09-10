@@ -300,6 +300,14 @@ The display rotates through three pages:
 If measurement health fails, a dedicated `SENSOR UNAVAILABLE` page replaces all
 normal pages so stale values cannot look current.
 
+The two-color OLED reserves its 16-row yellow band for a compact status line;
+all values and instructions fit into the other 48 rows. The default 180-degree
+mounting puts yellow at the bottom; rotation 0 moves the status line to the top.
+The font sizes have 16- and 29-pixel line boxes, rather than their nominal 12- and
+22-pixel sizes. `API:on/off` reports the existing API-connected status, not proof
+that Home Assistant or any downstream automation is healthy. See
+[`display.md`](display.md) for photos, the revised layout, and state meanings.
+
 ## Implemented versus deferred scope
 
 Implemented stabilization scope includes:
