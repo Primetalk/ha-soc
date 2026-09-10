@@ -2,13 +2,16 @@
 
 The three original JPEGs were supplied by the project owner on 2026-09-10.
 They show the earlier firmware layout, before the two-color layout correction.
-They remain unchanged, including their original metadata.
+The measurement JPEG is retained unchanged as a historical overview, including
+its original metadata. The other two raw JPEGs were removed after preserving
+their important content in exact PNG crops; they remain in Git history
+(commit `aefc8c4`, which added all three photos).
 
-| State | Original JPEG | Original-pixel crop | AI-enhanced documentation illustration |
+| State | Source JPEG | Original-pixel crop | AI-enhanced documentation illustration |
 | --- | --- | --- | --- |
 | Measurements | [20260910_201403.jpg](20260910_201403.jpg) | [display-measurements-original.png](display-measurements-original.png) | [display-measurements-enhanced.png](display-measurements-enhanced.png) |
-| SOC not anchored | [20260910_201406.jpg](20260910_201406.jpg) | [display-soc-unset-original.png](display-soc-unset-original.png) | [display-soc-unset-enhanced.png](display-soc-unset-enhanced.png) |
-| Rules unavailable | [20260910_201411.jpg](20260910_201411.jpg) | [display-rules-original.png](display-rules-original.png) | [display-rules-enhanced.png](display-rules-enhanced.png) |
+| SOC not anchored | `20260910_201406.jpg` (Git history) | [display-soc-unset-original.png](display-soc-unset-original.png) | [display-soc-unset-enhanced.png](display-soc-unset-enhanced.png) |
+| Rules unavailable | `20260910_201411.jpg` (Git history) | [display-rules-original.png](display-rules-original.png) | [display-rules-enhanced.png](display-rules-enhanced.png) |
 
 ## Exact crops for publication
 
@@ -25,7 +28,7 @@ right/bottom exclusive:
 | Rules unavailable | `(1294, 1864, 1952, 2500)` | 658×636 |
 
 These crops retain the complete OLED module and a small margin of context.
-Use them or the original JPEGs when photographic authenticity matters.
+Use these exact crops or the retained JPEG when photographic authenticity matters.
 
 ## Enhanced versions and prompt
 
@@ -33,7 +36,7 @@ The `*-enhanced.png` files were produced with the built-in imagegen tool from
 the corresponding exact crop. The intended edit isolates the module from the
 hand/workbench onto a neutral dark background. Generative editing can alter fine
 details, so these are explicitly labeled **illustrations**, not exact photos,
-calibration evidence, or images of the revised firmware. The original photos
+calibration evidence, or images of the revised firmware. The original-pixel crops
 remain the authority for displayed readings and layout defects.
 
 Each of the three calls used the following prompt, replacing `{state}` with

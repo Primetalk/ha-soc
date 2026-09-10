@@ -18,8 +18,9 @@ Use the linked original-pixel crops for article publication or close analysis.
 | ![Enhanced earlier measurement page, including mixed-color current and power](images/display-measurements-enhanced.png) | ![Enhanced earlier SOC page with clipped heading and mixed-color instructions](images/display-soc-unset-enhanced.png) | ![Enhanced earlier rule page with yellow Load stop row](images/display-rules-enhanced.png) |
 | [Exact photo crop](images/display-measurements-original.png) | [Exact photo crop](images/display-soc-unset-original.png) | [Exact photo crop](images/display-rules-original.png) |
 
-Full-resolution source photos and editing provenance are linked in
-[`images/README.md`](images/README.md). Original JPEG files are unchanged.
+One full-resolution measurement photo is retained as a historical overview.
+All three original-pixel crops and editing provenance are linked in
+[`images/README.md`](images/README.md); the other two raw JPEGs remain in Git history.
 
 The original photos reveal three layout issues:
 
