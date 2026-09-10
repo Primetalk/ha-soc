@@ -569,8 +569,8 @@ charger, load, and hardwired protection must remain effective throughout outage.
 before the monitor lost power.
 
 **Normal or abnormal:** bounded rollback is an explicit consequence of coalesced
-flash writes. With defaults, exposure is roughly 66 seconds: 60-second checkpoint
-cadence plus polling/write-coalescing and scheduling delay.
+flash writes. With ESP32-C3 defaults, exposure is roughly 66 seconds: 60-second
+checkpoint cadence plus polling/write-coalescing and scheduling delay.
 
 **Likely causes:** monitor power failed after the last physical checkpoint; a
 graceful shutdown callback did not run; or preferences/checkpoint data is invalid.
@@ -583,6 +583,10 @@ approximate maximum lost Ah = abs(current_A) * 66 / 3600
 
 Review logs for checkpoint/preference errors and distinguish expected rollback
 from a missing/invalid record.
+
+For ESP8266, the default checkpoint/write window is about 16 minutes instead;
+power failure during flash erase/write can also invalidate older preferences.
+Use the recovery guidance in [`esp8266-migration.md`](esp8266-migration.md).
 
 **Corrective action:** document expected bounded loss. Investigate losses outside
 the accepted bound, recurring monitor-supply interruptions, or preference errors.

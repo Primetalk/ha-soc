@@ -26,6 +26,7 @@ EXPECTED_PACKAGES = {
 
 PUBLIC_GUIDES = {
     "docs/architecture.md",
+    "docs/esp8266-migration.md",
     "docs/getting-started.md",
     "docs/glossary.md",
     "docs/home-assistant-setup.md",
@@ -42,6 +43,7 @@ REQUIRED_PATHS = {
     "README.md",
     "Taskfile.yml",
     "battery-monitor.yaml",
+    "battery-monitor-esp8266.yaml",
     "secrets.example.yaml",
     "include/battery_monitor_types.h",
     "assets/fonts/RobotoMono-Variable.ttf",

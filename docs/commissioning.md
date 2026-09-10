@@ -313,12 +313,17 @@ Abrupt power-loss test (perform only where safely designed):
 | --------: | ----------------------------------- | -----------------------: | ---------------: | ---- |
 |           |                                     |                          |                  |      |
 
-With defaults, documented accounting exposure is roughly 66 seconds: 60-second
-checkpoint cadence plus approximately 1-second restored-record polling and
+With ESP32-C3 defaults, documented accounting exposure is roughly 66 seconds:
+60-second checkpoint cadence plus approximately 1-second restored-record polling and
 5-second write coalescing/scheduling. At constant current `I`, the approximate
 bound is `abs(I) * 66 / 3600 Ah`. Timing is not a hard real-time guarantee, so
 allow and document measurement uncertainty. A graceful shutdown callback must
 not be assumed during abrupt power removal.
+
+For the ESP8266 entry point, use its 15-minute checkpoint and 60-second flash
+write intervals when calculating expected loss. Also test the interrupted-commit
+recovery described in [`esp8266-migration.md`](esp8266-migration.md); the
+66-second estimate above does not apply to that target.
 
 ## 10. Rule configuration and hysteresis
 
