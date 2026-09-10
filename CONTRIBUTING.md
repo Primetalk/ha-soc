@@ -22,6 +22,7 @@ competing copies:
 | -------------------------------------------------------- | ------------------------------------------------------------------------------------ |
 | [`README.md`](README.md)                                 | Prototype status, safety boundary, audience routing, compact quick start, and map    |
 | [`docs/getting-started.md`](docs/getting-started.md)     | Prerequisites, configuration, build, flash, and first-boot success path               |
+| [`docs/esp8266-migration.md`](docs/esp8266-migration.md) | ESP8266 configuration, wiring differences, persistence trade-offs, and acceptance |
 | [`docs/wiring.md`](docs/wiring.md)                       | Monitor-only wiring, conductor roles, protection boundaries, and pre-energization    |
 | [`docs/home-assistant-setup.md`](docs/home-assistant-setup.md) | First integration, dashboard, runtime settings, and guarded manual SOC anchoring |
 | [`docs/troubleshooting.md`](docs/troubleshooting.md)     | Symptom-oriented diagnosis, evidence collection, remedies, and stop-work criteria    |
@@ -98,8 +99,10 @@ binary="${temp_dir}/battery-monitor-helper-tests"
 "${binary}"
 ```
 
-When firmware changes, also validate and compile the canonical ESPHome entry
-point as described in [`README.md`](README.md).
+When firmware changes, validate and compile both entry points. See
+[`README.md`](README.md) for `battery-monitor.yaml` and
+[`docs/esp8266-migration.md`](docs/esp8266-migration.md) for
+`battery-monitor-esp8266.yaml`.
 
 ## Render the hardware diagrams
 
@@ -178,8 +181,9 @@ canonical SVGs locally.
 
 The [ESPHome workflow](.github/workflows/esphome.yaml) runs repository and helper
 checks from a clean checkout, creates private test secrets from the valid-shaped
-fixture, installs the pinned ESPHome release, validates the canonical
-configuration, and compiles the default ESP32-C3 target.
+fixture, and installs the pinned ESPHome release. Its configuration matrix
+validates and compiles both the default ESP32-C3 and alternative ESP8266 D1 mini
+targets. Firmware compilation does not replace physical commissioning.
 
 ## Tooling layout
 

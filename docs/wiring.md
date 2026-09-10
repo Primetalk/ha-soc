@@ -178,6 +178,10 @@ described in [`fuse-selection.md`](fuse-selection.md).
 
 ## I2C wiring
 
+For the alternative ESP8266 target, use GPIO4 SDA and GPIO5 SCL as described in
+[`esp8266-migration.md`](esp8266-migration.md). The table and schematics below
+describe the default ESP32-C3 controller.
+
 The default bus is:
 
 | Signal      | ESP32-C3 default      | INA219 | OLED |

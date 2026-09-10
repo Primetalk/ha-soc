@@ -16,6 +16,14 @@ jobs:
   validate-and-compile:
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        configuration:
+          - battery-monitor.yaml
+          - battery-monitor-esp8266.yaml
+    env:
+      ESPHOME_CONFIGURATION: ${{ matrix.configuration }}
 
     steps:
       - name: Check out repository
@@ -47,15 +55,15 @@ jobs:
       - name: Create non-secret ESPHome fixture
         run: cp -- secrets.example.yaml secrets.yaml
 
-      - name: Validate canonical ESPHome configuration
-        run: esphome config battery-monitor.yaml
+      - name: Validate ESPHome configuration
+        run: esphome config "$ESPHOME_CONFIGURATION"
 
-      - name: Compile canonical ESPHome firmware
+      - name: Compile ESPHome firmware
         shell: bash
         run: |
           set -euo pipefail
-          esphome compile battery-monitor.yaml 2>&1 | tee /tmp/esphome-compile.log
+          esphome compile "$ESPHOME_CONFIGURATION" 2>&1 | tee /tmp/esphome-compile.log
           if grep -E '(^|[[:space:]])warning:' /tmp/esphome-compile.log; then
-            echo "Compiler warning detected in canonical build" >&2
+            echo "Compiler warning detected in $ESPHOME_CONFIGURATION build" >&2
             exit 1
           fi

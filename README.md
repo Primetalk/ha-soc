@@ -20,6 +20,11 @@ The canonical ESPHome entry point is
 - a local SSD1306 status display; and
 - encrypted Home Assistant API, protected OTA, and a fallback setup hotspot.
 
+An alternative D1 mini / ESP8266 entry point is available in
+[`battery-monitor-esp8266.yaml`](battery-monitor-esp8266.yaml). Read the
+[ESP8266 migration guide](docs/esp8266-migration.md) for its different I2C pins,
+longer persistence window, build commands, and hardware acceptance checks.
+
 ## Safety boundary
 
 This firmware estimates state of charge. It is **not** a BMS, fuse, disconnect,
@@ -268,6 +273,8 @@ examples are in [`docs/home-assistant.md`](docs/home-assistant.md).
 
 - [`docs/getting-started.md`](docs/getting-started.md) — prerequisites, build,
   flash, first-boot checks, and success criteria;
+- [`docs/esp8266-migration.md`](docs/esp8266-migration.md) — alternative ESP8266
+  target, wiring changes, flash-wear trade-offs, and migration checks;
 - [`docs/wiring.md`](docs/wiring.md) — monitor-only wiring, protection boundaries,
   diagrams, and de-energized inspection;
 - [`docs/home-assistant-setup.md`](docs/home-assistant-setup.md) — discovery,

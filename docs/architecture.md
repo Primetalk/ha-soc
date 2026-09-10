@@ -12,8 +12,11 @@ engineering reference, not a construction or commissioning shortcut.
 
 ## Canonical composition
 
-[`../battery-monitor.yaml`](../battery-monitor.yaml) is the only supported ESPHome
-entry point. It composes six packages:
+[`../battery-monitor.yaml`](../battery-monitor.yaml) is the default ESP32-C3
+entry point. The alternative
+[`../battery-monitor-esp8266.yaml`](../battery-monitor-esp8266.yaml) reuses the same
+six packages with platform-specific overrides documented in
+[`esp8266-migration.md`](esp8266-migration.md):
 
 | Package                                                              | Responsibility                                                                                                 |
 | -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
@@ -166,7 +169,7 @@ if capacity and checkpoint preference writes were interrupted at different times
 <details>
 <summary>Default persistence timing and abrupt-power-loss exposure</summary>
 
-With repository defaults:
+With the default ESP32-C3 entry point:
 
 - live state is staged to the checkpoint every 60 seconds;
 - restored records are polled for changes every 1 second;
@@ -185,6 +188,10 @@ approximate maximum lost Ah = abs(current_A) * 66 / 3600
 
 Reducing this interval trades accounting exposure against flash-write frequency
 and requires its own validation.
+
+The ESP8266 entry point uses 15-minute checkpoints and 60-second flash write
+coalescing. Its longer loss window and interrupted flash-commit behavior are
+documented in [`esp8266-migration.md`](esp8266-migration.md).
 
 </details>
 
