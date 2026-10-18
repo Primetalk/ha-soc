@@ -131,6 +131,7 @@ sensor:
   - platform: template
     name: State of Charge
     id: state_of_charge
+    device_class: battery
     unit_of_measurement: "%"
     state_class: measurement
     accuracy_decimals: 2
