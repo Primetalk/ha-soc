@@ -216,3 +216,14 @@ commands. Run ESPHome validation and compilation whenever firmware inputs
 change, and regenerate both SVGs whenever either schematic source changes. On
 macOS, use `task schematic:preview` for a final visual review when a diagram was
 edited.
+
+For ESP8266 firmware changes, also verify the positional preference layout after
+source generation or compilation:
+
+```sh
+python3 tests/preference_layout_test.py .esphome/build/battery-monitor-esp8266/src/main.cpp
+```
+
+The legacy allocation prefix is an OTA upgrade/rollback compatibility contract.
+New preferences must be appended after it; the energy checkpoint uses an explicit
+setup priority to preserve the existing record offsets.

@@ -31,6 +31,10 @@ globals:
   - id: energy_checkpoint
     type: uint32_t[6]
     restore_value: true
+    # ESP8266 preferences are positional. Allocate after existing globals,
+    # numbers (800) and Wi-Fi (250), but before our restore callback (-100).
+    # Moving this earlier breaks upgrade and rollback of legacy state.
+    setup_priority: -50
     initial_value: "{0, 0, 0, 0, 0, 0}"
     update_interval: ${restored_state_poll_interval}
 
@@ -47,7 +51,9 @@ esphome:
             id(energy_has_baseline) = false;
         - script.execute: publish_energy_totals
   on_shutdown:
-    - priority: 700
+    # Shutdown reverses setup order: stage before checkpoint's -50 save,
+    # followed by the preferences component's final flash synchronization.
+    - priority: -100
       then:
         - script.execute: checkpoint_energy_totals
 

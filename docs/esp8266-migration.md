@@ -94,6 +94,25 @@ including per-record checksums, before framework preferences. Check the implemen
 changing ESPHome versions or adding restored entities. See the
 [ESPHome preferences source](https://api-docs.esphome.io/esp8266_2preferences_8cpp_source).
 
+The energy checkpoint explicitly uses setup priority -50. Existing restored
+numbers/globals allocate at 800 and Wi-Fi at 250; the energy checkpoint therefore
+appends to their existing flash layout, before the energy restore callback at
+-100. The energy shutdown callback also uses -100: reverse shutdown order
+stages live totals before the checkpoint saves at -50 and preferences flush.
+Do not remove these overrides: declaration order alone would place the new
+record before SOC records and shift the positional ESP8266 preference layout.
+The generated-source regression check protects legacy allocation order, record
+sizes, and checksum keys. A normal OTA upgrade or rollback to the pre-energy
+firmware is intended to preserve existing SOC, settings, and Wi-Fi preferences;
+no factory reset is required. This compatibility is verified in generated code,
+not yet by an on-device power-cycle/OTA rollback test.
+
+An older firmware does not update the energy counters. Reinstalling the energy
+firmware may restore its last saved totals but cannot recover energy transferred
+while the old firmware was running. A device already flashed with the initial,
+unfixed draft can have displaced preferences; this fix cannot reconstruct state
+that the earlier build overwrote. Verify restored settings and SOC before use.
+
 With continuously changing SOC, the original 60-second checkpoint schedule can
 cause about 1,440 sector erases per day. The ESP8266 default of 15 minutes reduces
 SOC/energy-driven commits to roughly 96 per day. Settings changes, rule crossings,
