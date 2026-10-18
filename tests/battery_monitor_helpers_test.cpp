@@ -204,9 +204,57 @@ void test_event_journal_validation() {
          "event with non-finite SOC must fail validation");
 }
 
+void test_energy_tracking() {
+  double charged = 0.0, discharged = 0.0;
+  uint32_t previous_ms = 0;
+  bool baseline = false;
+  battery_monitor::integrate_energy_sample(1000.0f, 1000U, 5000U,
+      charged, discharged, previous_ms, baseline);
+  expect(charged == 0.0, "first sample must only establish a baseline");
+  for (uint32_t n = 2; n <= 3601; ++n)
+    battery_monitor::integrate_energy_sample(1000.0f, n * 1000U, 5000U,
+        charged, discharged, previous_ms, baseline);
+  expect(std::abs(charged - 1.0) < 1e-10, "1000 W for one hour must charge 1 kWh");
+  battery_monitor::integrate_energy_sample(-500.0f, 3602000U, 5000U,
+      charged, discharged, previous_ms, baseline);
+  expect(std::abs(discharged - 0.0001388888888888889) < 1e-12,
+         "negative power must increase only discharged energy");
+  const double before = charged;
+  battery_monitor::integrate_energy_sample(1000.0f, 3700000U, 5000U,
+      charged, discharged, previous_ms, baseline);
+  expect(charged == before, "long sample gaps must not accumulate energy");
+  battery_monitor::integrate_energy_sample(NAN, 3701000U, 5000U,
+      charged, discharged, previous_ms, baseline);
+  battery_monitor::integrate_energy_sample(1000.0f, 3702000U, 5000U,
+      charged, discharged, previous_ms, baseline);
+  expect(charged == before, "first sample after invalid data must rebaseline");
+  previous_ms = UINT32_MAX - 499U;
+  battery_monitor::integrate_energy_sample(1000.0f, 500U, 5000U,
+      charged, discharged, previous_ms, baseline);
+  expect(std::abs(charged - before - 1.0 / 3600.0) < 1e-12,
+         "millis rollover must preserve elapsed time");
+
+  uint32_t record[6] = {};
+  double restored_charge = 0.0, restored_discharge = 0.0;
+  expect(!battery_monitor::restore_energy_checkpoint(record, restored_charge,
+      restored_discharge), "empty energy checkpoint must be rejected");
+  battery_monitor::store_energy_checkpoint(record, charged, discharged);
+  expect(battery_monitor::restore_energy_checkpoint(record, restored_charge,
+      restored_discharge), "energy checkpoint must restore");
+  expect(restored_charge == charged && restored_discharge == discharged,
+         "checkpoint must preserve both double precision totals exactly");
+  battery_monitor::store_energy_checkpoint(record, -1.0, discharged);
+  expect(!battery_monitor::restore_energy_checkpoint(record, restored_charge,
+      restored_discharge), "negative totals must be rejected");
+  battery_monitor::store_energy_checkpoint(record, INFINITY, discharged);
+  expect(!battery_monitor::restore_energy_checkpoint(record, restored_charge,
+      restored_discharge), "nonfinite totals must be rejected");
+}
+
 }  // namespace
 
 int main() {
+  test_energy_tracking();
   test_float_codec();
   test_soc_checkpoint();
   test_rule_latch_record();

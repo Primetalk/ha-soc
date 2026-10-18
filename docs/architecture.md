@@ -147,6 +147,25 @@ Changing Rated Battery Capacity rescales remaining Ah so the current unbounded S
 percentage is preserved. It does not silently reinterpret the same remaining Ah
 as a different percentage.
 
+## Battery energy tracking
+
+The measurement package integrates signed Battery Power into separate cumulative
+charged/discharged kWh totals using right-endpoint rectangular integration.
+Double precision live accumulators retain small increments over long service
+periods. First samples establish a baseline; nonfinite power breaks continuity,
+and intervals longer than the measurement stale timeout are discarded. Neither
+SOC anchors nor charge-efficiency adjustments affect these measured DC totals.
+
+A six-word preference object stores magic, schema version, and both 64-bit totals.
+It uses the board-specific SOC checkpoint schedule and the same poll/write delays.
+Public totals publish every 10 seconds with `device_class: energy` and
+`state_class: total` without a reset timestamp. This class deliberately treats
+checkpoint rollback as a negative delta rather than a new meter cycle. Energy
+continues to accumulate while Home Assistant is offline, but unpowered or
+unmeasured periods cannot be recovered. See the
+[Energy setup guide](home-assistant-setup.md#10-add-the-battery-to-the-energy-dashboard)
+for selection and recovery limitations.
+
 ## Checkpoints and flash wear
 
 Live Ah updates at measurement cadence but is not written to flash on every

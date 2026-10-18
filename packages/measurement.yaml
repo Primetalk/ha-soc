@@ -11,7 +11,83 @@ globals:
     restore_value: false
     initial_value: "0"
 
+  # Live double precision avoids losing small increments as lifetime totals grow.
+  - id: energy_charged_live
+    type: double
+    restore_value: false
+    initial_value: "0.0"
+  - id: energy_discharged_live
+    type: double
+    restore_value: false
+    initial_value: "0.0"
+  - id: energy_previous_ms
+    type: uint32_t
+    restore_value: false
+    initial_value: "0"
+  - id: energy_has_baseline
+    type: bool
+    restore_value: false
+    initial_value: "false"
+  - id: energy_checkpoint
+    type: uint32_t[6]
+    restore_value: true
+    # ESP8266 preferences are positional. Allocate after existing globals,
+    # numbers (800) and Wi-Fi (250), but before our restore callback (-100).
+    # Moving this earlier breaks upgrade and rollback of legacy state.
+    setup_priority: -50
+    initial_value: "{0, 0, 0, 0, 0, 0}"
+    update_interval: ${restored_state_poll_interval}
+
+esphome:
+  on_boot:
+    - priority: -100
+      then:
+        - lambda: |-
+            static_assert(sizeof(id(energy_checkpoint)) / sizeof(uint32_t) ==
+                          battery_monitor::ENERGY_CHECKPOINT_WORDS,
+                          "Energy checkpoint size does not match its schema");
+            battery_monitor::restore_energy_checkpoint(id(energy_checkpoint),
+                id(energy_charged_live), id(energy_discharged_live));
+            id(energy_has_baseline) = false;
+        - script.execute: publish_energy_totals
+  on_shutdown:
+    # Shutdown reverses setup order: stage before checkpoint's -50 save,
+    # followed by the preferences component's final flash synchronization.
+    - priority: -100
+      then:
+        - script.execute: checkpoint_energy_totals
+
+script:
+  - id: publish_energy_totals
+    then:
+      - lambda: |-
+          id(battery_energy_charged).publish_state(id(energy_charged_live));
+          id(battery_energy_discharged).publish_state(id(energy_discharged_live));
+  - id: checkpoint_energy_totals
+    then:
+      - lambda: |-
+          battery_monitor::store_energy_checkpoint(id(energy_checkpoint),
+              id(energy_charged_live), id(energy_discharged_live));
+
 sensor:
+  - platform: template
+    name: Battery Energy Charged
+    id: battery_energy_charged
+    unit_of_measurement: kWh
+    device_class: energy
+    state_class: total
+    accuracy_decimals: 6
+    update_interval: never
+
+  - platform: template
+    name: Battery Energy Discharged
+    id: battery_energy_discharged
+    unit_of_measurement: kWh
+    device_class: energy
+    state_class: total
+    accuracy_decimals: 6
+    update_interval: never
+
   - platform: ina219
     id: ina219_monitor
     i2c_id: battery_i2c
@@ -61,6 +137,7 @@ sensor:
               if (!id(battery_voltage).has_state() ||
                   !std::isfinite(id(battery_voltage).state)) {
                 battery_monitor::invalidate_sensor_state(id(battery_power));
+                id(energy_has_baseline) = false;
               } else {
                 id(battery_power).publish_state(
                     id(battery_voltage).state * x * ${current_polarity_multiplier});
@@ -108,6 +185,13 @@ sensor:
     state_class: measurement
     accuracy_decimals: 1
     update_interval: never
+    on_value:
+      then:
+        - lambda: |-
+            battery_monitor::integrate_energy_sample(x, millis(),
+                ${measurement_stale_after_ms}, id(energy_charged_live),
+                id(energy_discharged_live), id(energy_previous_ms),
+                id(energy_has_baseline));
 
   - platform: template
     name: Shunt Voltage
@@ -163,6 +247,13 @@ binary_sensor:
              std::isfinite(id(battery_current).state);
 
 interval:
+  # Share SOC's board-specific checkpoint cadence (60s / 15min on ESP8266).
+  - interval: ${soc_checkpoint_interval}
+    then:
+      - script.execute: checkpoint_energy_totals
+  - interval: 10s
+    then:
+      - script.execute: publish_energy_totals
   - interval: 1s
     then:
       - if:
@@ -178,6 +269,7 @@ interval:
                 battery_monitor::invalidate_sensor_state(id(battery_voltage));
                 battery_monitor::invalidate_sensor_state(id(battery_current));
                 battery_monitor::invalidate_sensor_state(id(battery_power));
+                id(energy_has_baseline) = false;
                 battery_monitor::invalidate_sensor_state(id(ina219_current_raw));
                 battery_monitor::invalidate_sensor_state(id(ina219_power_raw));
                 battery_monitor::invalidate_sensor_state(id(ina219_shunt_voltage_raw));
