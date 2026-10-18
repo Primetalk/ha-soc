@@ -88,16 +88,16 @@ a memory optimization. See the [ESPHome ESP8266 platform documentation](https://
 
 ESPHome's ESP8266 preferences implementation commits changed preferences by
 erasing and rewriting a flash sector. Its flash-restoration buffer is 512 bytes
-in the pinned ESPHome 2026.8.0; the project's three records and eight saved numeric settings
-use approximately 144 bytes including per-record checksums, before framework
-preferences. Check the implementation and allocation behavior again when
+in the pinned ESPHome 2026.8.0; the project's four records (including the paired
+energy checkpoint) and eight saved numeric settings use approximately 172 bytes
+including per-record checksums, before framework preferences. Check the implementation and allocation behavior again when
 changing ESPHome versions or adding restored entities. See the
 [ESPHome preferences source](https://api-docs.esphome.io/esp8266_2preferences_8cpp_source).
 
 With continuously changing SOC, the original 60-second checkpoint schedule can
 cause about 1,440 sector erases per day. The ESP8266 default of 15 minutes reduces
-SOC-driven commits to roughly 96 per day. Settings changes, rule crossings, and
-other saved state can add writes. This is not a flash-lifetime guarantee: consult
+SOC/energy-driven commits to roughly 96 per day. Settings changes, rule crossings,
+and other saved state can add writes. This is not a flash-lifetime guarantee: consult
 the actual flash device's endurance specification and expected service life.
 The 60-second flash interval coalesces pending writes; it does not write unchanged
 data on a timer.

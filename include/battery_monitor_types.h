@@ -13,6 +13,50 @@
 
 namespace battery_monitor {
 
+constexpr size_t ENERGY_CHECKPOINT_WORDS = 6;
+constexpr uint32_t ENERGY_CHECKPOINT_MAGIC = 0x454E5247U;  // "ENRG"
+
+inline void store_energy_checkpoint(uint32_t *record, double charged, double discharged) {
+  static_assert(sizeof(double) == 2 * sizeof(uint32_t), "64-bit double required");
+  record[0] = 0;
+  record[1] = 1;  // Schema version.
+  std::memcpy(record + 2, &charged, sizeof(charged));
+  std::memcpy(record + 4, &discharged, sizeof(discharged));
+  record[0] = ENERGY_CHECKPOINT_MAGIC;
+}
+
+inline bool restore_energy_checkpoint(const uint32_t *record, double &charged,
+                                      double &discharged) {
+  double charge, discharge;
+  std::memcpy(&charge, record + 2, sizeof(charge));
+  std::memcpy(&discharge, record + 4, sizeof(discharge));
+  if (record[0] != ENERGY_CHECKPOINT_MAGIC || record[1] != 1 ||
+      !std::isfinite(charge) || !std::isfinite(discharge) || charge < 0 || discharge < 0)
+    return false;
+  charged = charge;
+  discharged = discharge;
+  return true;
+}
+
+// Right-endpoint rectangular integration of DC terminal power, in kWh.
+// Invalid readings break continuity; long gaps and boot downtime are skipped.
+inline void integrate_energy_sample(float power_w, uint32_t now, uint32_t max_gap_ms,
+                                    double &charged, double &discharged,
+                                    uint32_t &previous_ms, bool &baseline) {
+  if (!std::isfinite(power_w)) {
+    baseline = false;
+    return;
+  }
+  const uint32_t elapsed = now - previous_ms;
+  previous_ms = now;
+  const bool had_baseline = baseline;
+  baseline = true;
+  if (!had_baseline || elapsed > max_gap_ms) return;
+  const double energy = static_cast<double>(power_w) * elapsed / 3600000000.0;
+  if (energy >= 0) charged += energy;
+  else discharged -= energy;
+}
+
 // ESPHome emits global declarations before files listed in esphome.includes.
 // Restored globals therefore use primitive uint32_t arrays; this header only
 // supplies indexes and helpers used later inside generated lambdas. Each array

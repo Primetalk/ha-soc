@@ -269,3 +269,50 @@ complete [`commissioning.md`](commissioning.md), including:
 
 Use [`troubleshooting.md`](troubleshooting.md) when a check fails. Do not mark an
 item accepted merely because the displayed value looks plausible.
+
+## 10. Add the battery to the Energy dashboard
+
+After installing firmware with energy tracking, open the Energy dashboard's
+configuration and add a **Home battery storage** entry. Select the actual entity
+IDs from your installation:
+
+| Energy dashboard field | Monitor entity | Expected default ID |
+| --- | --- | --- |
+| Energy going into the battery | Battery Energy Charged | `sensor.battery_monitor_battery_energy_charged` |
+| Energy coming out of the battery | Battery Energy Discharged | `sensor.battery_monitor_battery_energy_discharged` |
+| Battery state of charge (when offered) | State of Charge | `sensor.battery_monitor_state_of_charge` |
+
+Both energy entities use kWh, `device_class: energy`, and
+`state_class: total`. They publish every 10 seconds. Allow Home
+Assistant time to collect statistics before expecting dashboard history. If a
+sensor is missing from the selector, check its attributes and statistics errors.
+See [Home Assistant's Energy FAQ](https://www.home-assistant.io/docs/energy/faq/).
+
+The totals start at zero when energy tracking is first installed and measure
+**DC energy at the shunt's battery measurement point**. They do not include AC
+charger/inverter conversion losses; mixing them with AC grid/solar meters can
+leave differences in the household energy balance. Positive Battery Power adds
+to charged energy; negative power adds to discharged energy. Counters integrate
+power samples using the right-endpoint rectangular method, independently of SOC
+validity, capacity, and charging-efficiency settings. SOC Full/Empty/Invalidate
+controls do not reset energy. The counters continue while Home Assistant or
+Wi-Fi is offline, provided the monitor remains powered and measurements continue.
+They cannot reconstruct energy from before installation or while unpowered.
+
+Missing/nonfinite power breaks integration continuity. The first valid sample
+after boot or invalidation establishes a baseline; gaps longer than
+`measurement_stale_after_ms` are skipped. Totals remain visible during measurement
+outages, so use Measurement Healthy to determine whether counting is current.
+
+Both totals are stored together in one versioned checkpoint on the SOC checkpoint
+schedule: 60 seconds on ESP32-C3, 15 minutes on ESP8266, plus the configured
+preference poll and flash-write delay. Graceful shutdown stages a checkpoint;
+it does not guarantee that flash has flushed before power is removed. Sudden
+power loss can roll back recent totals, and invalid/lost checkpoints restart at
+zero. The counters use `state_class: total` without a reset timestamp, so a rollback
+subtracts only the lost increment from Home Assistant statistics instead of
+starting a new meter cycle and counting the restored lifetime total again.
+A lost/invalid checkpoint or device replacement still requires inspecting and
+correcting the affected statistics in Home Assistant.
+These checkpointed counters are suitable for observational energy tracking,
+not billing or lossless metering.

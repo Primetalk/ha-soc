@@ -439,3 +439,13 @@ Important properties of the example:
   not drive charger/load controls;
 - it cannot recover multiple crossings that occurred during a long outage,
   because the device intentionally journals only the latest record.
+
+## Battery energy counters
+
+Battery Energy Charged (`battery_energy_charged`) and Battery Energy Discharged
+(`battery_energy_discharged`) expose cumulative DC terminal energy in kWh with
+`device_class: energy` and `state_class: total`. Positive power counts
+as charging; negative power counts as discharging. They are independent of SOC
+anchors and charge-efficiency corrections. For Energy dashboard mapping, gap
+handling, persistence windows, and statistics recovery limitations, see
+[Energy dashboard setup](home-assistant-setup.md#10-add-the-battery-to-the-energy-dashboard).

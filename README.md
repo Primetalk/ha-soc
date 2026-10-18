@@ -12,6 +12,7 @@ The canonical ESPHome entry point is
 [`battery-monitor.yaml`](battery-monitor.yaml). It provides:
 
 - high-side battery-voltage and bidirectional-current measurement;
+- cumulative charged/discharged DC energy for Home Assistant’s Energy dashboard;
 - signed current and power: positive means charging, negative means discharging;
 - manually anchored amp-hour state-of-charge estimation;
 - explicit measurement health, SOC trust, and plausibility diagnostics;
