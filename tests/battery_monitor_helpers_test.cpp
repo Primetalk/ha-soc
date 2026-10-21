@@ -17,7 +17,7 @@ void expect(bool condition, const char *description) {
   failures++;
 }
 
-void expect_near(float actual, float expected, float tolerance, const char *description) {
+void expect_near(double actual, double expected, double tolerance, const char *description) {
   if (std::isfinite(actual) && std::fabs(actual - expected) <= tolerance) return;
   std::cerr << "FAIL: " << description << " (expected " << expected << ", got " << actual
             << ")\n";
@@ -126,6 +126,51 @@ void test_soc_math() {
   expect_near(battery_monitor::integrate_remaining_ah(
                   100.0f, std::numeric_limits<float>::quiet_NaN(), 99.0f, 1000U),
               100.0f, 0.0001f, "non-finite current must not alter remaining Ah");
+}
+
+void test_low_current_soc_precision() {
+  // A float accumulator rounds each 1 s increment at 300 Ah. These
+  // month-long cases catch both exaggerated discharge and lost increments.
+  const struct {
+    double current_a;
+    double efficiency;
+    double expected_ah;
+  } cases[] = {
+      {-0.06, 99.0, 256.8},
+      {-0.04, 99.0, 271.2},
+      {0.06, 99.0, 342.768},
+      {0.04, 100.0, 328.8},
+  };
+  for (const auto &sample : cases) {
+    double remaining = 300.0;
+    for (uint32_t second = 0; second < 30U * 24U * 3600U; ++second) {
+      remaining = battery_monitor::integrate_remaining_ah(
+          remaining, sample.current_a, sample.efficiency, 1000U);
+      if (second % 900U == 0U) {
+        uint32_t checkpoint[battery_monitor::SOC_CHECKPOINT_WORDS] = {};
+        battery_monitor::store_soc_checkpoint(checkpoint, remaining, 300.0f, true);
+      }
+    }
+    expect_near(remaining, sample.expected_ah, 0.00001,
+                "month-long small currents must retain their amp-hours");
+  }
+
+  // Capacity changes and invalid samples must not narrow the live accumulator.
+  const double remaining = 300.000001;
+  expect_near(battery_monitor::rescale_remaining_ah(remaining, 300.0, 600.0),
+              600.000002, 1e-10, "capacity rescaling must retain live precision");
+  expect_near(battery_monitor::soc_percent(remaining, 300.0),
+              100.00000033333333, 1e-10, "SOC ratio must retain live precision");
+  expect_near(battery_monitor::integrate_remaining_ah(remaining, NAN, 99.0, 1000U),
+              remaining, 1e-10, "invalid samples must preserve the precise accumulator");
+
+  uint32_t checkpoint[battery_monitor::SOC_CHECKPOINT_WORDS] = {};
+  battery_monitor::store_soc_checkpoint(checkpoint, remaining, 300.0f, true);
+  // Golden five-word version-1 record: magic, version, float 300 Ah twice, valid.
+  const uint32_t legacy_record[] = {0x534F4343U, 1U, 0x43960000U, 0x43960000U, 1U};
+  expect(sizeof(checkpoint) == sizeof(legacy_record) &&
+             std::memcmp(checkpoint, legacy_record, sizeof(checkpoint)) == 0,
+         "double live state must produce the legacy float checkpoint format");
 }
 
 void test_hysteresis() {
@@ -259,6 +304,7 @@ int main() {
   test_soc_checkpoint();
   test_rule_latch_record();
   test_soc_math();
+  test_low_current_soc_precision();
   test_hysteresis();
   test_plausibility_and_rule_configuration();
   test_event_journal_validation();
