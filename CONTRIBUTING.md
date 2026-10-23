@@ -27,6 +27,7 @@ competing copies:
 | [`docs/home-assistant-setup.md`](docs/home-assistant-setup.md) | First integration, dashboard, runtime settings, and guarded manual SOC anchoring |
 | [`docs/troubleshooting.md`](docs/troubleshooting.md)     | Symptom-oriented diagnosis, evidence collection, remedies, and stop-work criteria    |
 | [`docs/glossary.md`](docs/glossary.md)                   | Plain-language terminology                                                           |
+| [`docs/charge-detection.md`](docs/charge-detection.md) | Inferred charging phases, automatic SOC synchronization, tuning, and limits |
 | [`docs/architecture.md`](docs/architecture.md)           | Firmware data flow, persistence, rules, events, and implemented/deferred boundaries  |
 | [`docs/home-assistant.md`](docs/home-assistant.md)       | Advanced entity/event contract and conservative automation patterns                  |
 | [`docs/commissioning.md`](docs/commissioning.md)         | Formal physical-monitor and integration acceptance record                            |

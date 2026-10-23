@@ -11,6 +11,11 @@ globals:
     restore_value: false
     initial_value: "0"
 
+  - id: last_voltage_ms
+    type: uint32_t
+    restore_value: false
+    initial_value: "0"
+
   # Live double precision avoids losing small increments as lifetime totals grow.
   - id: energy_charged_live
     type: double
@@ -103,8 +108,14 @@ sensor:
       accuracy_decimals: 3
       filters:
         - lambda: |-
-            if (!std::isfinite(x)) return {};
+            if (!std::isfinite(x)) {
+              id(last_voltage_ms) = 0;
+              id(reset_charge_detection).execute();
+              return {};
+            }
             return x;
+      on_value:
+        - lambda: id(last_voltage_ms) = millis();
 
     shunt_voltage:
       name: INA219 Shunt Voltage
@@ -125,7 +136,10 @@ sensor:
       disabled_by_default: true
       filters:
         - lambda: |-
-            if (!std::isfinite(x)) return {};
+            if (!std::isfinite(x)) {
+              id(reset_charge_detection).execute();
+              return {};
+            }
             return x;
       on_value:
         then:
@@ -156,6 +170,7 @@ sensor:
           - script.execute:
               id: integrate_soc_sample
               current_a: !lambda return x * ${current_polarity_multiplier};
+          - script.execute: evaluate_charge_detection
 
     power:
       name: INA219 Raw Power

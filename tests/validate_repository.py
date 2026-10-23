@@ -21,6 +21,7 @@ EXPECTED_PACKAGES = {
     "packages/measurement.yaml",
     "packages/soc.yaml",
     "packages/soc-rules.yaml",
+    "packages/charge-detection.yaml",
     "packages/display.yaml",
 }
 
@@ -576,7 +577,7 @@ def check_canonical_composition(checks: Checks) -> None:
     )
     checks.require(
         package_paths == EXPECTED_PACKAGES,
-        "canonical package set differs from the six approved packages: "
+        "canonical package set differs from the approved packages: "
         f"found {sorted(package_paths)}",
     )
 
@@ -584,7 +585,7 @@ def check_canonical_composition(checks: Checks) -> None:
         re.findall(r"^\s+-\s+(include/[^\s#]+)\s*$", entry, re.MULTILINE)
     )
     checks.require(
-        local_includes == {"include/battery_monitor_types.h"},
+        local_includes == {"include/battery_monitor_types.h", "include/charge_detection.h"},
         f"unexpected canonical C++ include set: {sorted(local_includes)}",
     )
     for relative_path in sorted(package_paths | local_includes):

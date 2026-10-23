@@ -19,6 +19,7 @@ packages:
   measurement: !include packages/measurement.yaml
   soc: !include packages/soc.yaml
   soc_rules: !include packages/soc-rules.yaml
+  charge_detection: !include packages/charge-detection.yaml
   display: !include packages/display.yaml
 
 esphome:
@@ -27,6 +28,7 @@ esphome:
   min_version: 2026.8.0
   includes:
     - include/battery_monitor_types.h
+    - include/charge_detection.h
   project:
     name: primetalk.esphome-shunt
     version: 0.3.0
