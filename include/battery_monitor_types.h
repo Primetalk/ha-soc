@@ -153,11 +153,13 @@ inline bool soc_checkpoint_is_valid(const uint32_t *record) {
          std::isfinite(capacity_ah) && capacity_ah > 0.0f;
 }
 
-inline void store_soc_checkpoint(uint32_t *record, float remaining_ah, float capacity_ah,
+inline void store_soc_checkpoint(uint32_t *record, double remaining_ah, float capacity_ah,
                                  bool valid) {
   // Magic is written last so a partially prepared in-memory record is invalid.
   record[SOC_CHECKPOINT_MAGIC_INDEX] = 0U;
-  record[SOC_CHECKPOINT_REMAINING_AH_BITS_INDEX] = encode_float(remaining_ah);
+  // Preserve the legacy flash layout. Narrow only the saved copy, never the
+  // live accumulator: per-sample float rounding loses small standby currents.
+  record[SOC_CHECKPOINT_REMAINING_AH_BITS_INDEX] = encode_float(static_cast<float>(remaining_ah));
   record[SOC_CHECKPOINT_CAPACITY_AH_BITS_INDEX] = encode_float(capacity_ah);
   record[SOC_CHECKPOINT_FLAGS_INDEX] = valid ? SOC_CHECKPOINT_VALID_FLAG : 0U;
   record[SOC_CHECKPOINT_VERSION_INDEX] = SOC_CHECKPOINT_VERSION;
@@ -192,15 +194,15 @@ inline bool event_journal_is_valid(const uint32_t *record) {
          std::isfinite(decode_float(record[EVENT_JOURNAL_SOC_PERCENT_BITS_INDEX]));
 }
 
-inline float soc_percent(float remaining_ah, float capacity_ah) {
+inline double soc_percent(double remaining_ah, double capacity_ah) {
   if (!std::isfinite(remaining_ah) || !std::isfinite(capacity_ah) || capacity_ah <= 0.0f) {
     return NAN;
   }
-  return remaining_ah * 100.0f / capacity_ah;
+  return remaining_ah * 100.0 / capacity_ah;
 }
 
-inline float rescale_remaining_ah(float remaining_ah, float old_capacity_ah,
-                                  float new_capacity_ah) {
+inline double rescale_remaining_ah(double remaining_ah, double old_capacity_ah,
+                                  double new_capacity_ah) {
   if (!std::isfinite(remaining_ah) || !std::isfinite(old_capacity_ah) ||
       !std::isfinite(new_capacity_ah) || old_capacity_ah <= 0.0f ||
       new_capacity_ah <= 0.0f) {
@@ -209,18 +211,18 @@ inline float rescale_remaining_ah(float remaining_ah, float old_capacity_ah,
   return remaining_ah * new_capacity_ah / old_capacity_ah;
 }
 
-inline float integrate_remaining_ah(float remaining_ah, float normalized_current_a,
-                                    float charging_efficiency_percent,
+inline double integrate_remaining_ah(double remaining_ah, double normalized_current_a,
+                                    double charging_efficiency_percent,
                                     uint32_t elapsed_ms) {
   if (!std::isfinite(remaining_ah) || !std::isfinite(normalized_current_a) ||
       !std::isfinite(charging_efficiency_percent)) {
     return remaining_ah;
   }
-  float effective_current = normalized_current_a;
-  if (effective_current > 0.0f) {
-    effective_current *= charging_efficiency_percent / 100.0f;
+  double effective_current = normalized_current_a;
+  if (effective_current > 0.0) {
+    effective_current *= charging_efficiency_percent / 100.0;
   }
-  return remaining_ah + effective_current * (static_cast<float>(elapsed_ms) / 3600000.0f);
+  return remaining_ah + effective_current * (static_cast<double>(elapsed_ms) / 3600000.0);
 }
 
 inline bool update_upward_latch(bool previous, float soc, float level, float hysteresis) {

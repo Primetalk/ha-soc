@@ -168,14 +168,22 @@ for selection and recovery limitations.
 
 ## Checkpoints and flash wear
 
-Live Ah updates at measurement cadence but is not written to flash on every
-sample. A five-word checkpoint stores:
+Live remaining Ah, integration arithmetic, and capacity rescaling use 64-bit
+double precision so small standby-current increments are retained at each
+measurement. Sensor inputs and published entities retain ESPHome's float format.
+Live Ah is not written to flash on every sample. A five-word checkpoint stores:
 
 - magic value;
 - schema version;
 - float bits for remaining Ah;
 - float bits for capacity Ah; and
 - validity flags.
+
+Only the saved copy of remaining Ah is rounded to float; checkpointing never
+rounds the live accumulator. This preserves the existing ESP8266 preference
+layout for upgrades and rollback. Restoring a checkpoint promotes its float
+value to double; near 300 Ah the rounding error is at most about 0.0000153 Ah
+per restore, rather than at every measurement.
 
 The record is prepared with its magic value written last, so an incomplete
 in-memory update is invalid. The complete fixed-size array is one ESPHome

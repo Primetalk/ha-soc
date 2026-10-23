@@ -1,11 +1,11 @@
 globals:
-  # Live state is updated at the current-sensor cadence and never written to
-  # flash directly. The five-word checkpoint is copied at a bounded cadence
-  # and persisted atomically as one ESPHome preference object.
+  # Double precision retains small per-sample standby-current increments.
+  # Live state is never written to flash directly. The legacy five-word float
+  # checkpoint is copied at a bounded cadence without narrowing live state.
   - id: soc_remaining_ah_live
-    type: float
+    type: double
     restore_value: false
-    initial_value: "0.0f"
+    initial_value: "0.0"
 
   - id: soc_valid_live
     type: bool
