@@ -211,6 +211,15 @@ inline double rescale_remaining_ah(double remaining_ah, double old_capacity_ah,
   return remaining_ah * new_capacity_ah / old_capacity_ah;
 }
 
+inline bool anchor_soc_full(float capacity_ah, double &remaining_ah, bool &valid,
+                            uint32_t *checkpoint) {
+  if (!std::isfinite(capacity_ah) || capacity_ah <= 0) return false;
+  remaining_ah = capacity_ah;
+  valid = true;
+  store_soc_checkpoint(checkpoint, remaining_ah, capacity_ah, true);
+  return true;
+}
+
 inline double integrate_remaining_ah(double remaining_ah, double normalized_current_a,
                                     double charging_efficiency_percent,
                                     uint32_t elapsed_ms) {
