@@ -384,3 +384,7 @@ Invalid readings clear evidence before filtering. A watchdog also clears
 detection when callbacks stop. Its history has no flash allocations. The two
 new restored threshold numbers have setup priority -60, after the energy
 checkpoint (-50) and before the -100 restore callbacks.
+
+The automatic-sync switch restores its choice, defaulting on only when there is
+no saved value. Its setup priority is -70, appending its preference after the
+threshold numbers while loading before the -100 boot callbacks.

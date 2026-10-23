@@ -110,7 +110,7 @@ integrate across the gap.
 | Full Charge Detected | `full_charge_detected` | On while the observed charging process qualifies as full; unavailable without valid readings |
 | Full Charge Voltage | `full_charge_voltage` | Persistent minimum voltage; initially 14.4 V |
 | Full Charge Tail Current | `full_charge_tail_current` | Persistent maximum positive tail current; initially 0.3 A |
-| Automatic Full Charge Sync | `automatic_full_charge_sync` | Starts on each boot; synchronizes at qualified full detection and every five minutes while it continues |
+| Automatic Full Charge Sync | `automatic_full_charge_sync` | Defaults on at first use and restores the saved choice; synchronizes at qualified full detection and every five minutes while it continues |
 
 See [charging detection](charge-detection.md) for qualification, reset semantics,
 measurement limits, and the interaction with the 95% Stop Charge setting.

@@ -199,8 +199,9 @@ battery.
 
 Automatic [charging-process detection](docs/charge-detection.md) can also establish
 a full anchor after observing a qualifying CV taper and five-minute tail dwell.
-Its thresholds are provisional and configurable; automatic synchronization starts
-enabled and does not depend on the existing SOC estimate.
+Its thresholds are provisional and configurable; automatic synchronization defaults
+to enabled, remembers your choice across reboots, and does not depend on the
+existing SOC estimate.
 
 > **Manual-anchor warning:** Set Battery Full and Set Battery Empty do not inspect
 > cell voltage, temperature, BMS state, charger state, current stability, or

@@ -2,7 +2,8 @@
 
 The monitor infers a charging process from fresh **battery-terminal voltage and
 net battery current**. It exposes `Charging Phase` and `Full Charge Detected` in
-Home Assistant. `Automatic Full Charge Sync` starts on after every reboot: a
+Home Assistant. `Automatic Full Charge Sync` defaults to on at first use and remembers your
+choice across reboots. When enabled, a
 qualified full detection immediately sets remaining capacity to rated capacity,
 marks SOC valid, and stages the normal SOC checkpoint. This can correct an
 estimate such as 90% when the measured charging process indicates full.
@@ -64,7 +65,7 @@ is deliberately not applied to this detector's positive tail current.
 | --- | --- | --- |
 | Full Charge Voltage | 14.4 V | Minimum battery voltage during the CV plateau and tail dwell |
 | Full Charge Tail Current | 0.3 A | Maximum strictly positive current during the tail dwell |
-| Automatic Full Charge Sync | On after reboot | Allows a qualified detection to synchronize SOC |
+| Automatic Full Charge Sync | On at first use; choice restored | Allows a qualified detection to synchronize SOC |
 
 Voltage and tail settings persist across reboot. These defaults follow the observed **14.616 V / 0.2 A** endpoint and requested
 14.4 V / 0.3 A thresholds for this 4S LiFePO4 installation. They are not
@@ -93,9 +94,10 @@ reference before treating this as a reliable endpoint detector. See the
 Changing either threshold, toggling automatic synchronization, or using any
 manual SOC button clears the accumulated detection history. Turning automatic
 synchronization off leaves phase/indicator observation running but suppresses
-SOC updates. Turning it back on requires new evidence. The switch is intentionally
-not restored: it is on again after reboot. To keep SOC manually invalid during
-diagnosis, turn automatic synchronization off for that session.
+SOC updates. Turning it back on requires new evidence. The switch remembers its on/off setting across reboots. To keep SOC manually
+invalid during diagnosis, turn automatic synchronization off. Changes use the
+normal flash-write coalescing interval; an immediate power cut before the write
+finishes can lose the latest setting.
 
 ## SOC rules and persistence
 
@@ -114,8 +116,9 @@ controller. Periodic full charging would require a separate explicit policy.
 
 Process history is RAM-only. The existing SOC checkpoint cadence and flash
 coalescing apply to automatic anchors too; a power cut before flush can lose a
-recent correction. New persistent threshold settings are allocated after all
-existing ESP8266 preferences, preserving their offsets for upgrades/rollback.
+recent correction. Persistent threshold settings follow the legacy ESP8266 preferences; the
+automatic-sync switch preference follows both thresholds. Existing offsets are
+preserved for upgrades/rollback.
 
 ## Verification on the installed system
 
