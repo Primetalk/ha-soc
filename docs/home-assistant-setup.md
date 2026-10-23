@@ -149,6 +149,10 @@ checks in [`commissioning.md`](commissioning.md).
 
 ## 6. Anchor SOC only at a qualified endpoint
 
+Automatic full-charge synchronization is enabled at boot. Review the
+[charging detector and its configurable thresholds](charge-detection.md); it can
+anchor SOC independently of the manual buttons below.
+
 > **Manual-anchor warning:** Set Battery Full and Set Battery Empty do not inspect
 > individual cell voltage, temperature, charger state, BMS state, tail current,
 > load state, or manufacturer endpoint criteria. Firmware accepts the operator's

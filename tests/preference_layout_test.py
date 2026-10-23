@@ -40,7 +40,7 @@ def main():
         "stop_load_level", "stop_load_hysteresis", "soc_checkpoint",
         "soc_rule_latches", "soc_event_journal", "wifi_wificomponent_id",
     ]
-    assert order == legacy + ["energy_checkpoint"], (
+    assert order == legacy + ["energy_checkpoint", "full_charge_voltage", "full_charge_tail_current"], (
         "ESP8266 preference layout changed: new allocations must follow all legacy "
         f"allocations for upgrade/rollback compatibility. Actual order: {order}"
     )

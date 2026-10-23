@@ -1,5 +1,6 @@
 #define BATTERY_MONITOR_HOST_TEST
 #include "include/battery_monitor_types.h"
+#include "include/charge_detection.h"
 
 #include <cmath>
 #include <cstdint>
@@ -22,6 +23,163 @@ void expect_near(double actual, double expected, double tolerance, const char *d
   std::cerr << "FAIL: " << description << " (expected " << expected << ", got " << actual
             << ")\n";
   failures++;
+}
+
+// These traces catch premature anchors, missed taper evidence, stale-data
+// continuity, and repeated anchors driven by SOC rather than measurements.
+struct ChargeTrace {
+  battery_monitor::ChargeDetector detector;
+  battery_monitor::ChargeConfig config{14.4f, 0.3f, 5.0f, 0.15f, 300000U, 5000U};
+  uint32_t now = 1000;
+  int anchors = 0;
+  void sample(float voltage, float current, bool healthy = true) {
+    if (detector.update(now, voltage, current, healthy, config)) ++anchors;
+    now += 1000;
+  }
+  void hold(int seconds, float voltage, float current) {
+    for (int i = 0; i < seconds; ++i) sample(voltage, current);
+  }
+  void cc() { hold(361, 13.5f, 35.0f); }
+  void cv(float voltage = 14.616f) {
+    for (int i = 0; i <= 360; ++i)
+      sample(voltage, 35.0f - 34.0f * static_cast<float>(i) / 360.0f);
+  }
+};
+
+void test_charge_process() {
+  using battery_monitor::ChargePhase;
+  ChargeTrace t;
+  t.cc();
+  expect(t.detector.phase() == ChargePhase::CC, "sustained 35 A must infer CC");
+  expect(t.anchors == 0, "CC must not anchor SOC");
+  t.cv();
+  expect(t.detector.phase() == ChargePhase::CV, "stable high voltage and taper must infer CV");
+  expect(t.anchors == 0, "CV above tail current must not anchor SOC");
+  t.hold(300, 14.616f, 0.2f);
+  expect(t.detector.phase() == ChargePhase::AlmostFull,
+         "tail current must remain a candidate until five full minutes elapse");
+  expect(t.anchors == 0, "no premature tail anchor");
+  t.hold(1, 14.616f, 0.2f);
+  expect(t.detector.full(), "qualified tail must expose Full charge detected");
+  expect(t.anchors == 1, "qualified tail must request one automatic anchor");
+  t.hold(299, 14.616f, 0.2f);
+  expect(t.anchors == 1, "continued tail must not anchor on every sample");
+  t.hold(1, 14.616f, 0.2f);
+  expect(t.anchors == 2, "continued tail must re-anchor after another five minutes");
+  t.sample(14.616f, 0.0f);
+  expect(!t.detector.full(), "zero current must cancel full detection immediately");
+  t.hold(700, 14.616f, 0.2f);
+  expect(t.anchors == 2, "old session evidence must not survive charger termination");
+}
+
+void test_charge_rejections() {
+  using battery_monitor::ChargePhase;
+  ChargeTrace resting;
+  resting.hold(1000, 14.616f, 0.2f);
+  expect(resting.anchors == 0, "booting into a small positive offset must not mark full");
+  ChargeTrace cutoff;
+  cutoff.cc();
+  cutoff.hold(1000, 14.616f, 0.2f);
+  expect(cutoff.anchors == 0, "an abrupt CC-to-tail drop lacks intermediate CV evidence");
+  ChargeTrace low_voltage;
+  low_voltage.cc();
+  for (int i = 0; i <= 360; ++i)
+    low_voltage.sample(13.5f, 35.0f - 34.0f * static_cast<float>(i) / 360.0f);
+  low_voltage.hold(1000, 13.5f, 0.2f);
+  expect(low_voltage.anchors == 0, "low-voltage current taper must not qualify full");
+  for (int fault = 0; fault < 6; ++fault) {
+    ChargeTrace t;
+    t.cc(); t.cv(); t.hold(200, 14.616f, 0.2f);
+    if (fault == 0) t.sample(NAN, 0.2f);
+    if (fault == 1) t.sample(14.616f, NAN);
+    if (fault == 2) t.sample(14.616f, 0.2f, false);
+    if (fault == 3) t.now += 6000;
+    if (fault == 4) t.sample(14.616f, -0.1f);
+    if (fault == 5) t.detector.reset();
+    t.hold(700, 14.616f, 0.2f);
+    expect(t.anchors == 0, "invalid data, gaps, discharge and reset must discard all evidence");
+  }
+  ChargeTrace interrupted;
+  interrupted.cc(); interrupted.cv(); interrupted.hold(200, 14.616f, 0.2f);
+  interrupted.sample(14.616f, 2.0f);
+  interrupted.hold(300, 14.616f, 0.2f);
+  expect(interrupted.anchors == 0, "tail interruption must restart dwell");
+  interrupted.hold(1, 14.616f, 0.2f);
+  expect(interrupted.anchors == 1, "a fresh complete dwell can qualify again");
+  ChargeTrace droop;
+  droop.cc(); droop.cv(); droop.hold(200, 14.616f, 0.2f);
+  droop.sample(13.8f, 0.2f);
+  droop.hold(700, 14.616f, 0.2f);
+  expect(droop.anchors == 0, "loss of high-voltage plateau discards CV evidence");
+  ChargeTrace invalid_config;
+  invalid_config.config.tail_current_a = 10.0f;
+  invalid_config.cc(); invalid_config.cv(); invalid_config.hold(700, 14.616f, 0.2f);
+  expect(invalid_config.anchors == 0 && invalid_config.detector.phase() == ChargePhase::Unavailable,
+         "invalid configuration must fail closed");
+}
+
+void test_charge_rollover_and_soc_correction() {
+  ChargeTrace t;
+  t.now = UINT32_MAX - 800000;
+  t.cc(); t.cv(); t.hold(601, 14.616f, 0.2f);
+  expect(t.anchors == 2, "phase windows and repeated anchors must survive millis rollover");
+  double remaining = 270.0;  // The reported 90% of a 300 Ah battery.
+  bool valid = false;
+  uint32_t checkpoint[battery_monitor::SOC_CHECKPOINT_WORDS] = {};
+  expect(battery_monitor::anchor_soc_full(300.0f, remaining, valid, checkpoint),
+         "automatic full anchoring accepts a valid capacity even with invalid SOC");
+  expect(remaining == 300.0 && valid, "automatic anchor corrects drifted 90% to valid 100%");
+  expect(battery_monitor::soc_checkpoint_is_valid(checkpoint), "full anchor stages a valid checkpoint");
+  expect(!battery_monitor::anchor_soc_full(NAN, remaining, valid, checkpoint),
+         "invalid capacity must not change the live or persisted anchor");
+  expect(remaining == 300.0 && valid, "failed anchor preserves existing state");
+}
+
+void test_charge_requires_continuous_recent_cv_evidence() {
+  ChargeTrace pending;
+  pending.cc();
+  pending.hold(120, 14.616f, 20.0f);
+  pending.hold(600, 13.5f, 35.0f);
+  pending.hold(600, 14.616f, 35.0f);
+  pending.hold(700, 14.616f, 0.2f);
+  expect(pending.anchors == 0, "pending taper proof must also clear on renewed bulk charging");
+  ChargeTrace pending_stall;
+  pending_stall.cc(); pending_stall.hold(1200, 14.616f, 20.0f);
+  pending_stall.hold(700, 14.616f, 0.2f);
+  expect(pending_stall.anchors == 0, "constant intermediate current must replace old taper proof");
+  ChargeTrace low_pending;
+  low_pending.cc(); low_pending.hold(1200, 14.616f, 2.0f);
+  low_pending.hold(700, 14.616f, 0.2f);
+  expect(low_pending.anchors == 0, "a constant current below active threshold also replaces old taper proof");
+  ChargeTrace renewed;
+  renewed.hold(361, 14.616f, 35.0f);
+  renewed.hold(120, 14.616f, 20.0f);
+  renewed.hold(1200, 14.616f, 35.0f);
+  renewed.hold(700, 14.616f, 0.2f);
+  expect(renewed.anchors == 0, "renewed bulk current must require new taper evidence");
+  ChargeTrace dips;
+  for (int i = 0; i <= 300; ++i) {
+    const float voltage = i <= 180 || i % 5 == 0 ? 14.616f : 13.5f;
+    dips.sample(voltage, 35.0f - 34.0f * static_cast<float>(i) / 300.0f);
+  }
+  dips.hold(700, 14.616f, 0.2f);
+  expect(dips.anchors == 0, "voltage dips between retained points must break plateau proof");
+  ChargeTrace stalled;
+  stalled.cc(); stalled.cv(); stalled.hold(1200, 14.616f, 2.0f);
+  stalled.hold(700, 14.616f, 0.2f);
+  expect(stalled.anchors == 0, "a stalled intermediate current must not retain CV proof forever");
+}
+
+void test_charge_endpoint_boundaries() {
+  ChargeTrace exact;
+  exact.cc(); exact.cv(14.4f); exact.hold(301, 14.4f, 0.3f);
+  expect(exact.anchors == 1, "exact configured voltage and current boundaries qualify");
+  ChargeTrace above;
+  above.cc(); above.cv(); above.hold(700, 14.616f, 0.31f);
+  expect(above.anchors == 0, "current above the requested 0.3 A limit must not anchor");
+  ChargeTrace below;
+  below.cc(); below.cv(14.39f); below.hold(700, 14.39f, 0.2f);
+  expect(below.anchors == 0, "voltage below the requested 14.4 V limit must not anchor");
 }
 
 void test_float_codec() {
@@ -299,6 +457,11 @@ void test_energy_tracking() {
 }  // namespace
 
 int main() {
+  test_charge_process();
+  test_charge_rejections();
+  test_charge_rollover_and_soc_correction();
+  test_charge_requires_continuous_recent_cv_evidence();
+  test_charge_endpoint_boundaries();
   test_energy_tracking();
   test_float_codec();
   test_soc_checkpoint();

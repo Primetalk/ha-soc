@@ -59,6 +59,14 @@ substitutions:
   soc_checkpoint_interval: 60s
   current_state_deadband_amps: "0.20"
 
+  # Full-charge inference: runtime V/I thresholds start at these values.
+  # Based on observed 14.616 V / 0.2 A endpoint for this 4S installation.
+  full_charge_voltage_default: "14.4"
+  full_charge_tail_current_default: "0.3"
+  charge_detection_active_current_amps: "5.0"
+  charge_detection_voltage_band_v: "0.15"
+  charge_detection_window_ms: "300000"
+
   # An unbounded SOC outside this range remains visible but is marked suspect.
   soc_plausible_min_percent: "-10.0"
   soc_plausible_max_percent: "110.0"
