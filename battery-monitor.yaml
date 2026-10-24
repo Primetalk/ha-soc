@@ -23,7 +23,7 @@ esphome:
     version: 0.3.0
 
 esp32:
-  board: ${esp32_board}
+  variant: ${esp32_variant}
   framework:
     type: arduino
 

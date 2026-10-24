@@ -11,10 +11,10 @@ substitutions:
   # INSTALLATION VALUES — review these against every as-built monitor.
   # ---------------------------------------------------------------------------
 
-  # Device identity and exact ESP32 board/build profile.
+  # Device identity and ESP32 chip variant.
   device_name: battery-monitor
   friendly_name: Battery Monitor
-  esp32_board: esp32-c3-devkitm-1
+  esp32_variant: esp32c3
 
   # Descriptive battery defaults. Firmware does not use these as BMS limits.
   battery_profile: 4S LiFePO4

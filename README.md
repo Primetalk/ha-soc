@@ -86,7 +86,7 @@ competence.
 | ----------------------- | ---------------------------------------------------- |
 | Battery profile         | 4S LiFePO4, 300 Ah rated capacity                    |
 | Controller              | ESP32-C3 SuperMini                                   |
-| ESPHome board profile   | `esp32-c3-devkitm-1`                                 |
+| ESPHome chip variant    | `esp32c3`                                           |
 | Current/voltage monitor | INA219 breakout, onboard shunt electrically isolated |
 | External shunt          | 500 A / 75 mV (`0.00015 ohm`)                        |
 | Display                 | SSD1306 128x64 I2C OLED                              |
