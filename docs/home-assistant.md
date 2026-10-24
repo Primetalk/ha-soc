@@ -49,7 +49,7 @@ The public current convention is fixed:
 
 - positive amperes and watts mean charging;
 - negative amperes and watts mean discharging;
-- the charging/discharging/idle labels use a deadband, but the full normalized
+- the charging/discharging/idle labels use hysteresis and a ten-second dwell, but the full normalized
   current is still integrated for coulomb counting.
 
 ## Measurement entities
@@ -63,9 +63,9 @@ The public current convention is fixed:
 | INA219 Raw Current   | `ina219_current_raw`       | `sensor.battery_monitor_ina219_raw_current`         | A                 | Pre-polarity diagnostic; disabled by default                                 |
 | INA219 Raw Power     | `ina219_power_raw`         | `sensor.battery_monitor_ina219_raw_power`           | W                 | INA219 raw-power diagnostic; disabled by default                             |
 | INA219 Shunt Voltage | `ina219_shunt_voltage_raw` | `sensor.battery_monitor_ina219_shunt_voltage`       | V                 | Native differential reading; disabled by default                             |
-| Battery Charging     | `battery_charging`         | `binary_sensor.battery_monitor_battery_charging`    | binary            | Current is above the positive deadband                                       |
-| Battery Discharging  | `battery_discharging`      | `binary_sensor.battery_monitor_battery_discharging` | binary            | Current is below the negative deadband                                       |
-| Battery Idle         | `battery_idle`             | `binary_sensor.battery_monitor_battery_idle`        | binary            | Absolute current is inside the deadband                                      |
+| Battery Charging     | `battery_charging`         | `binary_sensor.battery_monitor_battery_charging`    | binary            | Charging entered above 0.3 A; exits below 0.1 A, each sustained for 10 s                                       |
+| Battery Discharging  | `battery_discharging`      | `binary_sensor.battery_monitor_battery_discharging` | binary            | Discharging entered below -0.3 A; exits above -0.1 A, each sustained for 10 s                                       |
+| Battery Idle         | `battery_idle`             | `binary_sensor.battery_monitor_battery_idle`        | binary            | Neither charging nor discharging is established                                      |
 | Measurement Healthy  | `measurement_healthy`      | `binary_sensor.battery_monitor_measurement_healthy` | diagnostic binary | Required finite readings are fresh                                           |
 
 If the INA219 stops producing valid samples for the configured stale interval,

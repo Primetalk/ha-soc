@@ -192,14 +192,15 @@ is flowing before treating the result as zero-current error.
 - [ ] Peak-to-peak noise is recorded.
 - [ ] Warm-up drift is recorded.
 - [ ] Long-term apparent Ah drift is estimated from the observed current offset.
-- [ ] `Battery Idle` is on inside the configured deadband.
+- [ ] After ten continuous seconds below 0.1 A in magnitude, `Battery Idle` is on.
 - [ ] `Battery Charging` and `Battery Discharging` are off while idle.
-- [ ] Crossing either side of the deadband changes only mode classification;
-      current inside the deadband is still integrated and is not silently set to
-      zero.
+- [ ] Ten seconds above 0.3 A establishes charging; below -0.3 A establishes
+      discharging. Readings in the hysteresis band retain an established direction.
+- [ ] Crossing the direction thresholds changes only mode classification;
+      small current is still integrated and is not silently set to zero.
 
 The MVP does not implement zero-offset calibration. If error is unacceptable,
-do not compensate by increasing the mode deadband: that would change labels but
+do not compensate by widening the mode hysteresis: that would change labels but
 not coulomb-counting input. Record the issue for the calibration/evolution work.
 
 ## 6. Current sign, gain, and power

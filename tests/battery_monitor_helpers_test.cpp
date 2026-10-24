@@ -55,20 +55,20 @@ void test_charge_process() {
   t.cv();
   expect(t.detector.phase() == ChargePhase::CV, "stable high voltage and taper must infer CV");
   expect(t.anchors == 0, "CV above tail current must not anchor SOC");
-  t.hold(300, 14.616f, 0.2f);
+  t.hold(330, 14.616f, 0.3f);
   expect(t.detector.phase() == ChargePhase::AlmostFull,
-         "tail current must remain a candidate until five full minutes elapse");
+         "tail current must finish averaging and five full minutes before detection");
   expect(t.anchors == 0, "no premature tail anchor");
-  t.hold(1, 14.616f, 0.2f);
+  t.hold(1, 14.616f, 0.3f);
   expect(t.detector.full(), "qualified tail must expose Full charge detected");
   expect(t.anchors == 1, "qualified tail must request one automatic anchor");
-  t.hold(299, 14.616f, 0.2f);
+  t.hold(299, 14.616f, 0.3f);
   expect(t.anchors == 1, "continued tail must not anchor on every sample");
-  t.hold(1, 14.616f, 0.2f);
+  t.hold(1, 14.616f, 0.3f);
   expect(t.anchors == 2, "continued tail must re-anchor after another five minutes");
   t.sample(14.616f, 0.0f);
   expect(!t.detector.full(), "zero current must cancel full detection immediately");
-  t.hold(700, 14.616f, 0.2f);
+  t.hold(700, 14.616f, 0.3f);
   expect(t.anchors == 2, "old session evidence must not survive charger termination");
 }
 
@@ -101,10 +101,10 @@ void test_charge_rejections() {
   }
   ChargeTrace interrupted;
   interrupted.cc(); interrupted.cv(); interrupted.hold(200, 14.616f, 0.2f);
-  interrupted.sample(14.616f, 2.0f);
+  interrupted.hold(31, 14.616f, 2.0f);
   interrupted.hold(300, 14.616f, 0.2f);
   expect(interrupted.anchors == 0, "tail interruption must restart dwell");
-  interrupted.hold(1, 14.616f, 0.2f);
+  interrupted.hold(40, 14.616f, 0.2f);
   expect(interrupted.anchors == 1, "a fresh complete dwell can qualify again");
   ChargeTrace droop;
   droop.cc(); droop.cv(); droop.hold(200, 14.616f, 0.2f);
@@ -121,7 +121,7 @@ void test_charge_rejections() {
 void test_charge_rollover_and_soc_correction() {
   ChargeTrace t;
   t.now = UINT32_MAX - 800000;
-  t.cc(); t.cv(); t.hold(601, 14.616f, 0.2f);
+  t.cc(); t.cv(); t.hold(631, 14.616f, 0.2f);
   expect(t.anchors == 2, "phase windows and repeated anchors must survive millis rollover");
   double remaining = 270.0;  // The reported 90% of a 300 Ah battery.
   bool valid = false;
@@ -167,12 +167,13 @@ void test_charge_requires_continuous_recent_cv_evidence() {
   ChargeTrace stalled;
   stalled.cc(); stalled.cv(); stalled.hold(1200, 14.616f, 2.0f);
   stalled.hold(700, 14.616f, 0.2f);
-  expect(stalled.anchors == 0, "a stalled intermediate current must not retain CV proof forever");
+  expect(stalled.detector.full() && stalled.anchors >= 1,
+         "recognized CV must survive a flat intermediate tail while voltage remains stable");
 }
 
 void test_charge_endpoint_boundaries() {
   ChargeTrace exact;
-  exact.cc(); exact.cv(14.4f); exact.hold(301, 14.4f, 0.3f);
+  exact.cc(); exact.cv(14.4f); exact.hold(331, 14.4f, 0.3f);
   expect(exact.anchors == 1, "exact configured voltage and current boundaries qualify");
   ChargeTrace above;
   above.cc(); above.cv(); above.hold(700, 14.616f, 0.31f);
@@ -180,6 +181,172 @@ void test_charge_endpoint_boundaries() {
   ChargeTrace below;
   below.cc(); below.cv(14.39f); below.hold(700, 14.39f, 0.2f);
   expect(below.anchors == 0, "voltage below the requested 14.4 V limit must not anchor");
+}
+
+// Voltage milestones are from the reported charge; the current curve is an
+// illustrative taper, not a reconstruction of unrecorded measurements.
+void test_gradually_rising_cv_and_slow_tail() {
+  ChargeTrace t;
+  t.config.tail_current_a = 0.5f;
+  const int times[] = {0, 326, 1177, 1992, 2940};
+  const float volts[] = {13.416f, 14.392f, 14.604f, 14.616f, 14.616f};
+  bool saw_cv = false;
+  bool lost_cv = false;
+  for (int seconds = 0; seconds < 4200; ++seconds) {
+    float voltage = 14.616f;
+    for (int k = 1; k < 5; ++k) {
+      if (seconds <= times[k]) {
+        voltage = volts[k-1] + (volts[k]-volts[k-1]) *
+            (seconds-times[k-1]) / (times[k]-times[k-1]);
+        break;
+      }
+    }
+    float current = 0.28f + 34.849f * std::exp(-seconds / 400.0f);
+    if (seconds >= 2940) current = (seconds / 5) % 2 ? 0.259f : 0.336f;
+    t.sample(voltage, current);
+    if (t.detector.phase() == battery_monitor::ChargePhase::CV) saw_cv = true;
+    if (saw_cv && t.detector.phase() == battery_monitor::ChargePhase::Observing)
+      lost_cv = true;
+  }
+  expect(saw_cv && !lost_cv, "gradual voltage rise and slowing taper must retain recognized CV");
+  expect(t.detector.full() && t.anchors >= 2,
+         "reported voltage milestones with a slow taper must reach full and repeat sync");
+}
+
+void test_tail_uses_average_and_full_dwell() {
+  ChargeTrace t;
+  t.config.tail_current_a = 0.5f;
+  t.cc(); t.cv();
+  // Average 0.45 A, although individual samples exceed the 0.5 A threshold.
+  for (int i = 0; i < 301; ++i) t.sample(14.616f, i % 2 ? 0.6f : 0.3f);
+  expect(t.anchors == 0, "averaging must settle before the full five-minute tail dwell");
+  for (int i = 0; i < 60; ++i) t.sample(14.616f, i % 2 ? 0.6f : 0.3f);
+  expect(t.detector.full() && t.anchors == 1,
+         "tail eligibility must use the 30-second average instead of individual steps");
+  t.hold(31, 14.616f, 0.8f);
+  expect(!t.detector.full(), "sustained current above tail must clear full after averaging");
+  t.hold(301, 14.616f, 0.3f);
+  expect(t.anchors == 1, "renewed tail must wait for averaging and a fresh dwell");
+  t.hold(40, 14.616f, 0.3f);
+  expect(t.detector.full() && t.anchors == 2, "renewed averaged tail must qualify again");
+  t.sample(14.616f, -0.01f);
+  expect(!t.detector.full(), "averaging must never conceal a discharge sample");
+}
+
+void test_tail_average_weights_time_not_sample_count() {
+  ChargeTrace t;
+  t.config.tail_current_a = 0.5f;
+  t.cc(); t.cv();
+  const uint32_t start = t.now;
+  // Equal time at 0.6/0.3 A means 0.45 A average, but sample the higher
+  // value ten times more often. A sample-count average would never qualify.
+  while (t.now - start < 360000U) {
+    const bool high = (t.now - start) % 20000U < 10000U;
+    if (t.detector.update(t.now, 14.616f, high ? 0.6f : 0.3f, true, t.config))
+      ++t.anchors;
+    t.now += high ? 100U : 1000U;
+  }
+  expect(t.detector.full() && t.anchors == 1,
+         "uneven sample frequency must not distort the time-weighted tail average");
+
+  ChargeTrace above;
+  above.config.tail_current_a = 0.5f;
+  above.cc(); above.cv();
+  const uint32_t second_start = above.now;
+  // Most elapsed time is above threshold, although most samples are below it.
+  while (above.now - second_start < 700000U) {
+    const bool high = (above.now - second_start) % 11000U < 10000U;
+    if (above.detector.update(above.now, 14.616f, high ? 0.6f : 0.3f, true, above.config))
+      ++above.anchors;
+    above.now += high ? 1000U : 100U;
+  }
+  expect(above.anchors == 0, "frequent low samples must not conceal a high time-average current");
+}
+
+void test_cv_requires_fresh_voltage_stability() {
+  ChargeTrace t;
+  t.cc(); t.cv(); t.hold(400, 14.616f, 0.2f);
+  expect(t.detector.full(), "test starts with a qualified full condition");
+  const int previous_anchors = t.anchors;
+  // No individual step exceeds 0.15 V, but the recent window spans 0.2 V.
+  for (int i = 1; i <= 100; ++i) t.sample(14.616f + i * 0.002f, 0.2f);
+  expect(!t.detector.full(), "a wide recent voltage window must clear the full indication");
+  t.hold(300, 14.816f, 0.2f);
+  expect(t.anchors == previous_anchors, "full dwell must wait for a fresh stable voltage window");
+  t.hold(301, 14.816f, 0.2f);
+  expect(t.detector.full() && t.anchors == previous_anchors + 1,
+         "a new stable high plateau can qualify without relearning substantial charge");
+  t.sample(15.1f, 0.2f);
+  t.hold(700, 15.1f, 0.2f);
+  expect(!t.detector.full() && t.anchors == previous_anchors + 1,
+         "an abrupt voltage jump must discard process history");
+}
+
+void test_current_direction_hysteresis() {
+  using battery_monitor::CurrentDirection;
+  battery_monitor::CurrentDirectionDetector d;
+  uint32_t now = UINT32_MAX - 15000U;
+  auto sample = [&](float current) {
+    expect(d.update(now, current, 0.3f, 0.1f, 10000U, 5000U),
+           "finite current and valid hysteresis must be accepted");
+    now += 1000;
+  };
+  for (int i = 0; i < 10; ++i) sample(35.0f);
+  expect(d.state() == CurrentDirection::Idle, "charging indication must wait ten full seconds");
+  sample(35.0f);
+  expect(d.state() == CurrentDirection::Charging, "sustained current must indicate charging");
+  for (int i = 0; i < 120; ++i) sample((i / 5) % 2 ? 0.259f : 0.198f);
+  expect(d.state() == CurrentDirection::Charging,
+         "reported steps around 0.2 A must not chatter after charging is established");
+  for (int i = 0; i < 10; ++i) sample(0.061f);
+  expect(d.state() == CurrentDirection::Charging, "brief low current must not clear charging");
+  sample(0.061f);
+  expect(d.state() == CurrentDirection::Idle, "ten seconds below exit threshold must become idle");
+  for (int i = 0; i < 120; ++i) sample((i / 5) % 2 ? 0.137f : 0.061f);
+  expect(d.state() == CurrentDirection::Idle, "small tail current must not restart charging indication");
+  for (int i = 0; i < 11; ++i) sample(-1.0f);
+  expect(d.state() == CurrentDirection::Discharging, "negative current must use symmetric hysteresis");
+  for (int i = 0; i < 60; ++i) sample(-0.198f);
+  expect(d.state() == CurrentDirection::Discharging, "discharge state must survive the hysteresis band");
+  now += 6000;
+  sample(35.0f);
+  expect(d.state() == CurrentDirection::Idle, "a sample gap must discard pending and settled direction");
+  for (int i = 0; i < 10; ++i) sample(35.0f);
+  expect(d.state() == CurrentDirection::Charging, "direction can settle after data recovers");
+  expect(!d.update(now, NAN, 0.3f, 0.1f, 10000U, 5000U), "invalid current must be rejected");
+  expect(d.state() == CurrentDirection::Idle, "invalid input must clear the direction state");
+  expect(!d.update(now, 1.0f, 0.1f, 0.3f, 10000U, 5000U), "inverted hysteresis must be rejected");
+}
+
+void test_direction_exit_is_independent_of_opposite_entry() {
+  using battery_monitor::CurrentDirection;
+  for (float sign : {1.0f, -1.0f}) {
+    battery_monitor::CurrentDirectionDetector d;
+    for (uint32_t t = 1000; t <= 11000; t += 1000)
+      d.update(t, sign, 0.3f, 0.1f, 10000U, 5000U);
+    for (uint32_t t = 12000; t <= 22000; t += 1000) {
+      const float current = ((t - 12000) / 5000) % 2 ? -sign : 0.0f;
+      d.update(t, current, 0.3f, 0.1f, 10000U, 5000U);
+    }
+    expect(d.state() == CurrentDirection::Idle,
+           "continuous exit condition must clear direction even when opposite entry is interrupted");
+  }
+}
+
+void test_cv_voltage_window_uses_elapsed_time() {
+  for (uint32_t cadence : {1000U, 1100U}) {
+    ChargeTrace t;
+    t.config.tail_current_a = 0.5f;
+    t.cc(); t.cv();
+    const uint32_t start = t.now;
+    while (t.now - start <= 900000U) {
+      const float voltage = 14.616f + 0.144f * ((t.now - start) / 300000.0f);
+      if (t.detector.update(t.now, voltage, 0.3f, true, t.config)) ++t.anchors;
+      t.now += cadence;
+    }
+    expect(t.detector.full() && t.anchors >= 2,
+           "slightly irregular samples must not stretch the five-minute voltage window");
+  }
 }
 
 void test_float_codec() {
@@ -457,6 +624,13 @@ void test_energy_tracking() {
 }  // namespace
 
 int main() {
+  test_tail_average_weights_time_not_sample_count();
+  test_cv_requires_fresh_voltage_stability();
+  test_direction_exit_is_independent_of_opposite_entry();
+  test_cv_voltage_window_uses_elapsed_time();
+  test_current_direction_hysteresis();
+  test_gradually_rising_cv_and_slow_tail();
+  test_tail_uses_average_and_full_dwell();
   test_charge_process();
   test_charge_rejections();
   test_charge_rollover_and_soc_correction();

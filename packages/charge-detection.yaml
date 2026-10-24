@@ -1,4 +1,5 @@
 # Inferred charging phases and automatic full anchoring from fresh V/I history.
+# Tail current is a 30-second average; the saved threshold survives upgrades.
 # No charger/BMS telemetry is implied. See docs/charge-detection.md.
 number:
   - platform: template

@@ -62,14 +62,14 @@ class ChargeDetector {
       return false;
     }
     if (cv_seen_ && (voltage < config.charged_voltage_v ||
-                    std::fabs(voltage - plateau_v_) > config.voltage_band_v ||
-                    current >= peak_current_ * 0.8f ||
-                    (current > config.tail_current_a &&
-                     now - last_cv_evidence_ms_ > config.window_ms))) {
+                    std::fabs(voltage - last_voltage_) > config.voltage_band_v ||
+                    current >= peak_current_ * 0.8f)) {
       reset();
     }
     has_sample_ = true;
     last_sample_ms_ = now;
+    last_voltage_ = voltage;
+    tail_average_.update(now, current);
 
     if (voltage < config.charged_voltage_v || current > peak_current_ * 0.8f) {
       taper_seen_ = false;
@@ -107,22 +107,33 @@ class ChargeDetector {
       last_point_ms_ = now;
     }
     bool cc = false;
-    if (count_ == POINTS && now - points_[next_].time >= config.window_ms) {
+    bool stable_voltage = false;
+    const unsigned oldest = (next_ + POINTS - count_) % POINTS;
+    if (count_ > 1 && now - points_[oldest].time >= config.window_ms) {
       float min_v = voltage, max_v = voltage;
       float min_i = current, max_i = current, early = 0, late = 0;
-      for (unsigned i = 0; i < POINTS; ++i) {
-        const auto &p = points_[(next_ + i) % POINTS];
+      unsigned early_count = 0, late_count = 0;
+      for (unsigned i = 0; i < count_; ++i) {
+        const auto &p = points_[(oldest + i) % POINTS];
+        const uint32_t age = now - p.time;
+        // Retain only the latest time window plus the bucket crossing its
+        // start. Sample jitter must not turn 61 points into a longer window.
+        if (age > config.window_ms && i + 1 < count_ &&
+            now - points_[(oldest + i + 1) % POINTS].time >= config.window_ms)
+          continue;
         min_v = std::min(min_v, p.min_voltage);
         max_v = std::max(max_v, p.max_voltage);
         min_i = std::min(min_i, p.current);
         max_i = std::max(max_i, p.current);
-        if (i < 12) early += p.current / 12.0f;
-        if (i >= POINTS - 12) late += p.current / 12.0f;
+        if (age >= config.window_ms * 4U / 5U) { early += p.current; ++early_count; }
+        if (age <= config.window_ms / 5U) { late += p.current; ++late_count; }
       }
+      early = early_count > 0 ? early / early_count : current;
+      late = late_count > 0 ? late / late_count : current;
       const bool constant_current = armed_ && min_i > config.tail_current_a &&
           max_i <= min_i * 1.2f;
       cc = constant_current && min_i >= config.active_current_a;
-      if (constant_current) {
+      if (constant_current && !cv_seen_) {
         // A new constant-current plateau (even below active_current_a)
         // supersedes a pending taper that
         // never reached CV. Otherwise an hours-old decline could qualify a cut.
@@ -131,16 +142,18 @@ class ChargeDetector {
         cv_seen_ = false;
         peak_current_ = current;
       }
-      if (armed_ && taper_seen_ && min_v >= config.charged_voltage_v &&
-          max_v - min_v <= config.voltage_band_v &&
+      stable_voltage = min_v >= config.charged_voltage_v &&
+          max_v - min_v <= config.voltage_band_v;
+      if (armed_ && taper_seen_ && stable_voltage &&
           early > config.tail_current_a && late <= early * 0.8f) {
-        if (!cv_seen_) plateau_v_ = (min_v + max_v) / 2.0f;
         cv_seen_ = true;
-        last_cv_evidence_ms_ = now;
       }
     }
 
-    if (cv_seen_ && current <= config.tail_current_a) {
+    // Once CV is recognized, a slow/flat tail does not undo it. The latest
+    // voltage window and averaged current must still qualify on every sample.
+    if (cv_seen_ && stable_voltage && tail_average_.ready() &&
+        tail_average_.value() <= config.tail_current_a) {
       const uint32_t elapsed = tail_.elapsed(now);
       if (elapsed >= config.window_ms) {
         phase_ = ChargePhase::Full;
@@ -159,6 +172,47 @@ class ChargeDetector {
   }
 
  private:
+  // Thirty completed one-second buckets, time-weighted with the previous
+  // sample held until the next sample. Refresh at least once per second rather
+  // than weighting rapid samples more heavily. Gaps are rejected by update().
+  class TailAverage {
+   public:
+    void update(uint32_t now, float current) {
+      if (!started_) {
+        started_ = true;
+      } else {
+        uint32_t elapsed = now - previous_ms_;
+        while (elapsed > 0) {
+          const uint32_t part = std::min(elapsed, 1000U - bucket_ms_);
+          bucket_area_ += static_cast<double>(previous_current_) * part;
+          bucket_ms_ += part;
+          elapsed -= part;
+          if (bucket_ms_ == 1000U) {
+            sum_ -= buckets_[next_];
+            buckets_[next_] = bucket_area_ / 1000.0;
+            sum_ += buckets_[next_];
+            next_ = (next_ + 1) % 30;
+            if (count_ < 30) ++count_;
+            bucket_ms_ = 0;
+            bucket_area_ = 0;
+          }
+        }
+      }
+      previous_ms_ = now;
+      previous_current_ = current;
+    }
+    bool ready() const { return count_ == 30; }
+    float value() const { return static_cast<float>(sum_ / 30.0); }
+
+   private:
+    double buckets_[30]{};
+    double sum_ = 0, bucket_area_ = 0;
+    uint32_t previous_ms_ = 0, bucket_ms_ = 0;
+    unsigned next_ = 0, count_ = 0;
+    float previous_current_ = 0;
+    bool started_ = false;
+  };
+
   struct Timer {
     bool running = false;
     uint32_t start = 0;
@@ -173,10 +227,10 @@ class ChargeDetector {
   Point points_[POINTS]{};
   unsigned next_ = 0, count_ = 0;
   uint32_t last_point_ms_ = 0, last_sample_ms_ = 0;
-  uint32_t last_cv_evidence_ms_ = 0;
   bool has_sample_ = false, armed_ = false, taper_seen_ = false;
   bool cv_seen_ = false, full_latched_ = false;
-  float peak_current_ = 0, plateau_v_ = 0;
+  float peak_current_ = 0, last_voltage_ = 0;
+  TailAverage tail_average_;
   Timer active_, taper_, tail_;
   ChargePhase phase_ = ChargePhase::Unavailable;
 };

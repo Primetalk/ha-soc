@@ -57,12 +57,15 @@ substitutions:
   measurement_stale_after_ms: "5000"
   soc_max_sample_gap_ms: "10000"
   soc_checkpoint_interval: 60s
-  current_state_deadband_amps: "0.20"
+  # Classification only: ten seconds beyond hysteretic thresholds.
+  current_state_enter_amps: "0.30"
+  current_state_exit_amps: "0.10"
+  current_state_settle_ms: "10000"
 
   # Full-charge inference: runtime V/I thresholds start at these values.
   # Based on observed 14.616 V / 0.2 A endpoint for this 4S installation.
   full_charge_voltage_default: "14.4"
-  full_charge_tail_current_default: "0.3"
+  full_charge_tail_current_default: "0.5"
   charge_detection_active_current_amps: "5.0"
   charge_detection_voltage_band_v: "0.15"
   charge_detection_window_ms: "300000"

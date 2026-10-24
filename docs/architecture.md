@@ -84,9 +84,13 @@ does not bridge the missing interval.
 When samples return, the first valid current sample establishes a new monotonic
 timing baseline. Integration resumes only from later valid intervals.
 
-The charging/idle/discharging deadband is classification only. Current inside the
-deadband still enters Ah integration so small real current and sensor offset
-remain visible in long-term SOC behavior.
+Charging/idle/discharging classification uses hysteresis and a ten-second dwell:
+enter above 0.3 A, exit below 0.1 A, with symmetric negative thresholds for
+discharge. The three indicators share a mutually exclusive state. This does not
+filter the current entering Ah/energy integration; small real current and sensor
+offset remain visible in long-term behavior. Full-charge inference separately
+uses a 30-second time-weighted average for tail qualification; see
+[charge detection](charge-detection.md).
 
 ## Unbounded Ah and SOC model
 
