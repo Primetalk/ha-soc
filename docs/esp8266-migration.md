@@ -33,7 +33,7 @@ remains the option with more memory headroom.
 | Setting | Default ESP32-C3 | ESP8266 entry point |
 | --- | --- | --- |
 | Configuration | `battery-monitor.yaml` | `battery-monitor-esp8266.yaml` |
-| Board profile | `esp32-c3-devkitm-1` | `d1_mini` |
+| Chip variant / board profile | `esp32c3` | `d1_mini` |
 | Device name | `battery-monitor` | `battery-monitor-esp8266` |
 | SDA / SCL | GPIO0 / GPIO1 | GPIO4 / GPIO5 |
 | SOC checkpoint interval | 60 seconds | 15 minutes |
@@ -45,7 +45,7 @@ The root-level substitutions in the ESP8266 entry point override the shared
 defaults. Review battery capacity, efficiency, shunt resistance, polarity, and
 rule levels in [`../packages/battery-config.yaml`](../packages/battery-config.yaml).
 Put ESP8266-specific overrides in the ESP8266 entry point so they do not change
-the ESP32-C3 target. The `esp32_board` substitution in the shared package is
+the ESP32-C3 target. The `esp32_variant` substitution in the shared package is
 unused by the ESP8266 entry point.
 
 Keep measurement sampling at 1 second. The longer checkpoint interval only
