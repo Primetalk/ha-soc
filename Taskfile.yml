@@ -20,6 +20,7 @@ tasks:
     desc: Run deterministic repository validation
     cmds:
       - python3 tests/validate_repository.py
+      - python3 tests/repository_validation_test.py
 
   test:helpers:
     desc: Compile and run the deterministic C++ helper tests

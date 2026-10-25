@@ -250,8 +250,8 @@ binary_sensor:
     id: measurement_healthy
     entity_category: diagnostic
     lambda: |-
-      if (id(last_measurement_ms) == 0 ||
-          (uint32_t) (millis() - id(last_measurement_ms)) > ${measurement_stale_after_ms}) {
+      if (!battery_monitor::sample_is_fresh(
+              millis(), id(last_measurement_ms), ${measurement_stale_after_ms})) {
         return false;
       }
       return id(battery_voltage).has_state() &&
@@ -273,8 +273,8 @@ interval:
           condition:
             lambda: |-
               return id(last_measurement_ms) != 0 &&
-                     (uint32_t) (millis() - id(last_measurement_ms)) >
-                         ${measurement_stale_after_ms} &&
+                     !battery_monitor::sample_is_fresh(
+                         millis(), id(last_measurement_ms), ${measurement_stale_after_ms}) &&
                      (id(battery_current).has_state() || id(battery_voltage).has_state());
           then:
             # Do not leave stale values looking current in Home Assistant.

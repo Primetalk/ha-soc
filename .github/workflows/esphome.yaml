@@ -40,7 +40,9 @@ jobs:
         run: python -m pip install "esphome==2026.8.0"
 
       - name: Validate repository invariants
-        run: python tests/validate_repository.py
+        run: |
+          python tests/validate_repository.py
+          python tests/repository_validation_test.py
 
       - name: Compile and run deterministic helper tests
         shell: bash
@@ -70,3 +72,7 @@ jobs:
 
       - name: Check OLED geometry with generated font metrics
         run: python tests/display_layout_test.py ".esphome/build/${ESPHOME_CONFIGURATION%.yaml}/src/main.cpp"
+
+      - name: Check ESP8266 upgrade and rollback preference layout
+        if: matrix.configuration == 'battery-monitor-esp8266.yaml'
+        run: python tests/preference_layout_test.py .esphome/build/battery-monitor-esp8266/src/main.cpp

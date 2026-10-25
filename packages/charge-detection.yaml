@@ -72,10 +72,10 @@ script:
     then:
       - lambda: |-
           const uint32_t now = millis();
-          const bool healthy = id(last_measurement_ms) != 0 &&
-              id(last_voltage_ms) != 0 &&
-              now - id(last_measurement_ms) <= ${measurement_stale_after_ms} &&
-              now - id(last_voltage_ms) <= ${measurement_stale_after_ms} &&
+          const bool healthy = battery_monitor::sample_is_fresh(
+              now, id(last_measurement_ms), ${measurement_stale_after_ms}) &&
+              battery_monitor::sample_is_fresh(
+                  now, id(last_voltage_ms), ${measurement_stale_after_ms}) &&
               id(battery_voltage).has_state() && id(battery_current).has_state() &&
               id(full_charge_voltage).has_state() && id(full_charge_tail_current).has_state();
           const battery_monitor::ChargeConfig config{
@@ -102,8 +102,9 @@ interval:
           condition:
             lambda: |-
               const uint32_t now = millis();
-              return id(last_voltage_ms) == 0 || id(last_measurement_ms) == 0 ||
-                  now - id(last_voltage_ms) > ${measurement_stale_after_ms} ||
-                  now - id(last_measurement_ms) > ${measurement_stale_after_ms};
+              return !battery_monitor::sample_is_fresh(
+                  now, id(last_voltage_ms), ${measurement_stale_after_ms}) ||
+                  !battery_monitor::sample_is_fresh(
+                      now, id(last_measurement_ms), ${measurement_stale_after_ms});
           then:
             - script.execute: reset_charge_detection
