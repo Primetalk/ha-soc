@@ -340,7 +340,7 @@ correct and affected commissioning checks pass.
 believed idle.
 
 **Normal or abnormal:** real standby loads and monitor consumption can exist. A
-small classification deadband changes labels only; it does not remove current
+classification hysteresis changes labels only; it does not remove current
 from SOC integration.
 
 **Likely causes:** real parasitic current, INA219/shunt offset, thermal drift,
@@ -354,7 +354,7 @@ isolation and no Kelvin bypass current.
 
 **Corrective action:** remove unintended real loads or correct wiring. If measured
 sensor offset is unacceptable, record the failed acceptance result. The current
-firmware has no zero-offset calibration; increasing the mode deadband will not
+firmware has no zero-offset calibration; widening the mode hysteresis will not
 correct SOC integration.
 
 **Record:** time, temperature, raw current, shunt voltage, peak-to-peak noise,

@@ -6,8 +6,7 @@ engineering reference, not a construction or commissioning shortcut.
 
 > **Current scope:** The repository is a prototype. The complete physical monitor
 > has not passed the commissioning checklist, and no real charger or load
-> automation has been validated. Calibration workflows, automatic endpoint
-> qualification, capacity learning, a productized Home Assistant dashboard, and
+> automation has been validated. Calibration workflows, capacity learning, a productized Home Assistant dashboard, and
 > local actuation remain future work.
 
 ## Canonical composition
@@ -15,7 +14,7 @@ engineering reference, not a construction or commissioning shortcut.
 [`../battery-monitor.yaml`](../battery-monitor.yaml) is the default ESP32-C3
 entry point. The alternative
 [`../battery-monitor-esp8266.yaml`](../battery-monitor-esp8266.yaml) reuses the same
-six packages with platform-specific overrides documented in
+seven packages with platform-specific overrides documented in
 [`esp8266-migration.md`](esp8266-migration.md):
 
 | Package                                                              | Responsibility                                                                                                 |
@@ -24,6 +23,7 @@ six packages with platform-specific overrides documented in
 | [`../packages/connectivity.yaml`](../packages/connectivity.yaml)     | Wi-Fi, encrypted native API, OTA, time, diagnostics, and reconnect replay                                      |
 | [`../packages/measurement.yaml`](../packages/measurement.yaml)       | I2C, INA219 inputs, sign normalization, derived power/mode, freshness, and stale invalidation                  |
 | [`../packages/soc.yaml`](../packages/soc.yaml)                       | Runtime capacity/efficiency, unbounded Ah integration, validity, plausibility, checkpoints, and manual anchors |
+| [`../packages/charge-detection.yaml`](../packages/charge-detection.yaml) | Charging-process inference and automatic full synchronization |
 | [`../packages/soc-rules.yaml`](../packages/soc-rules.yaml)           | Runtime thresholds, hysteretic latches, authoritative conditions, event journal, and event delivery            |
 | [`../packages/display.yaml`](../packages/display.yaml)               | Local measurement, SOC, health, connectivity, and rule-status pages                                            |
 
@@ -84,9 +84,13 @@ does not bridge the missing interval.
 When samples return, the first valid current sample establishes a new monotonic
 timing baseline. Integration resumes only from later valid intervals.
 
-The charging/idle/discharging deadband is classification only. Current inside the
-deadband still enters Ah integration so small real current and sensor offset
-remain visible in long-term SOC behavior.
+Charging/idle/discharging classification uses hysteresis and a ten-second dwell:
+enter above 0.3 A, exit below 0.1 A, with symmetric negative thresholds for
+discharge. The three indicators share a mutually exclusive state. This does not
+filter the current entering Ah/energy integration; small real current and sensor
+offset remain visible in long-term behavior. Full-charge inference separately
+uses a 30-second time-weighted average for tail qualification; see
+[charge detection](charge-detection.md).
 
 ## Unbounded Ah and SOC model
 
@@ -127,7 +131,7 @@ SOC is deliberately not clamped to 0–100%. Clamping would hide evidence of:
 
 The firmware tracks separate concepts:
 
-- **Invalid:** no trusted restored/manual anchor exists, or the operator explicitly
+- **Invalid:** no trusted restored/manual/automatic anchor exists, or the operator explicitly
   invalidated SOC. Trusted State of Charge and rule conditions are unavailable.
 - **Valid, not suspect:** an anchor exists and the unbounded percentage is inside
   configured plausibility limits.
@@ -340,7 +344,7 @@ that Home Assistant or any downstream automation is healthy. See
 Implemented stabilization scope includes:
 
 - INA219 high-side measurement with one sign-normalization stage;
-- manually anchored unbounded SOC;
+- manually and automatically anchored unbounded SOC;
 - bounded checkpoint persistence;
 - validity and plausibility diagnostics;
 - three runtime-configurable hysteretic rule conditions;
@@ -352,7 +356,7 @@ Implemented stabilization scope includes:
 Deferred work includes:
 
 - zero-offset, gain, polarity, and voltage calibration workflows;
-- automatic full/empty endpoint qualification;
+- manufacturer-qualified endpoint profiles and automatic empty detection;
 - usable-capacity learning;
 - chemistry profiles with qualified endpoint defaults;
 - productized dashboard and automation blueprints;
@@ -373,3 +377,18 @@ described as current capabilities until their validation gates pass.
   — deterministic helper behavior; and
 - [`../tests/validate_repository.py`](../tests/validate_repository.py) — clean
   checkout and repository invariants.
+
+## Charging-process inference
+
+[`charge-detection.md`](charge-detection.md) defines the phase detector, runtime
+thresholds, automatic full anchoring, repeated synchronization, and limitations.
+The pure detector lives in `include/charge_detection.h`. Current callbacks feed
+it after integration; voltage and current freshness are checked independently.
+Invalid readings clear evidence before filtering. A watchdog also clears
+detection when callbacks stop. Its history has no flash allocations. The two
+new restored threshold numbers have setup priority -60, after the energy
+checkpoint (-50) and before the -100 restore callbacks.
+
+The automatic-sync switch restores its choice, defaulting on only when there is
+no saved value. Its setup priority is -70, appending its preference after the
+threshold numbers while loading before the -100 boot callbacks.

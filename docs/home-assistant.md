@@ -49,7 +49,7 @@ The public current convention is fixed:
 
 - positive amperes and watts mean charging;
 - negative amperes and watts mean discharging;
-- the charging/discharging/idle labels use a deadband, but the full normalized
+- the charging/discharging/idle labels use hysteresis and a ten-second dwell, but the full normalized
   current is still integrated for coulomb counting.
 
 ## Measurement entities
@@ -63,9 +63,9 @@ The public current convention is fixed:
 | INA219 Raw Current   | `ina219_current_raw`       | `sensor.battery_monitor_ina219_raw_current`         | A                 | Pre-polarity diagnostic; disabled by default                                 |
 | INA219 Raw Power     | `ina219_power_raw`         | `sensor.battery_monitor_ina219_raw_power`           | W                 | INA219 raw-power diagnostic; disabled by default                             |
 | INA219 Shunt Voltage | `ina219_shunt_voltage_raw` | `sensor.battery_monitor_ina219_shunt_voltage`       | V                 | Native differential reading; disabled by default                             |
-| Battery Charging     | `battery_charging`         | `binary_sensor.battery_monitor_battery_charging`    | binary            | Current is above the positive deadband                                       |
-| Battery Discharging  | `battery_discharging`      | `binary_sensor.battery_monitor_battery_discharging` | binary            | Current is below the negative deadband                                       |
-| Battery Idle         | `battery_idle`             | `binary_sensor.battery_monitor_battery_idle`        | binary            | Absolute current is inside the deadband                                      |
+| Battery Charging     | `battery_charging`         | `binary_sensor.battery_monitor_battery_charging`    | binary            | Charging entered above 0.3 A; exits below 0.1 A, each sustained for 10 s                                       |
+| Battery Discharging  | `battery_discharging`      | `binary_sensor.battery_monitor_battery_discharging` | binary            | Discharging entered below -0.3 A; exits above -0.1 A, each sustained for 10 s                                       |
+| Battery Idle         | `battery_idle`             | `binary_sensor.battery_monitor_battery_idle`        | binary            | Neither charging nor discharging is established                                      |
 | Measurement Healthy  | `measurement_healthy`      | `binary_sensor.battery_monitor_measurement_healthy` | diagnostic binary | Required finite readings are fresh                                           |
 
 If the INA219 stops producing valid samples for the configured stale interval,
@@ -85,7 +85,7 @@ integrate across the gap.
 | SOC Estimate Unbounded     | `soc_estimate_unbounded`            | `sensor.battery_monitor_soc_estimate_unbounded`     | Diagnostic estimate that remains visible while SOC trust is invalid                |
 | Remaining Capacity         | `remaining_capacity_ah`             | `sensor.battery_monitor_remaining_capacity`         | Live, unbounded Ah accumulator                                                     |
 | Discarded Integration Gaps | `discarded_integration_gaps_sensor` | `sensor.battery_monitor_discarded_integration_gaps` | Boot-local count of rejected timing gaps                                           |
-| SOC Valid                  | `soc_valid`                         | `binary_sensor.battery_monitor_soc_valid`           | On only after a valid restored/manual anchor                                       |
+| SOC Valid                  | `soc_valid`                         | `binary_sensor.battery_monitor_soc_valid`           | On only after a valid restored/manual/automatic anchor                                       |
 | SOC Suspect                | `soc_suspect`                       | `binary_sensor.battery_monitor_soc_suspect`         | On when valid SOC is outside configured plausibility limits                        |
 | SOC Status                 | `soc_status`                        | `sensor.battery_monitor_soc_status`                 | `not_set`, `valid`, `suspect`, or `configuration_error`                            |
 | Set Battery Full           | `set_battery_full`                  | `button.battery_monitor_set_battery_full`           | Sets remaining Ah to rated capacity and marks SOC valid                            |
@@ -101,6 +101,19 @@ integrate across the gap.
 - **valid and suspect** means it is anchored but outside those limits. The
   unbounded value remains visible and still drives rule conditions; it is not
   clamped to 0-100%.
+
+## Charging-process entities
+
+| Display name | ESPHome ID | Contract |
+| --- | --- | --- |
+| Charging Phase | `charging_phase` | Inferred `observing`, `cc`, `cv`, `almost_full`, `full`, `idle`, `discharging`, or `unavailable` |
+| Full Charge Detected | `full_charge_detected` | On while the observed charging process qualifies as full; unavailable without valid readings |
+| Full Charge Voltage | `full_charge_voltage` | Persistent minimum voltage; initially 14.4 V |
+| Full Charge Tail Current | `full_charge_tail_current` | Persistent maximum positive tail current; initially 0.3 A |
+| Automatic Full Charge Sync | `automatic_full_charge_sync` | Defaults on at first use and restores the saved choice; synchronizes at qualified full detection and every five minutes while it continues |
+
+See [charging detection](charge-detection.md) for qualification, reset semantics,
+measurement limits, and the interaction with the 95% Stop Charge setting.
 
 ## SOC rule entities
 

@@ -14,7 +14,7 @@ The canonical ESPHome entry point is
 - high-side battery-voltage and bidirectional-current measurement;
 - cumulative charged/discharged DC energy for Home Assistant’s Energy dashboard;
 - signed current and power: positive means charging, negative means discharging;
-- manually anchored amp-hour state-of-charge estimation;
+- amp-hour SOC estimation with manual anchors and automatic full-charge synchronization;
 - explicit measurement health, SOC trust, and plausibility diagnostics;
 - hysteretic Stop Charge, Capacity Warning, and Stop Load conditions;
 - persistent condition state plus sequence-tagged reconnect event replay;
@@ -197,6 +197,12 @@ On a genuinely fresh device:
 This is intentional: an unanchored value must not masquerade as a trusted empty
 battery.
 
+Automatic [charging-process detection](docs/charge-detection.md) can also establish
+a full anchor after observing a qualifying CV taper and five-minute tail dwell.
+Its thresholds are provisional and configurable; automatic synchronization defaults
+to enabled, remembers your choice across reboots, and does not depend on the
+existing SOC estimate.
+
 > **Manual-anchor warning:** Set Battery Full and Set Battery Empty do not inspect
 > cell voltage, temperature, BMS state, charger state, current stability, or
 > manufacturer endpoint criteria. Use them only when the battery is independently
@@ -318,6 +324,7 @@ examples are in [`docs/home-assistant.md`](docs/home-assistant.md).
 | [`packages/connectivity.yaml`](packages/connectivity.yaml)           | Wi-Fi, encrypted API, OTA, time, and diagnostics                     |
 | [`packages/measurement.yaml`](packages/measurement.yaml)             | INA219 measurements, sign normalization, freshness, and current mode |
 | [`packages/soc.yaml`](packages/soc.yaml)                             | Unbounded Ah/SOC, checkpoints, validity, and manual anchors          |
+| [`packages/charge-detection.yaml`](packages/charge-detection.yaml) | Charging phases, full detection, and automatic synchronization |
 | [`packages/soc-rules.yaml`](packages/soc-rules.yaml)                 | Hysteretic conditions and latest-event journal                       |
 | [`packages/display.yaml`](packages/display.yaml)                     | SSD1306 status pages                                                 |
 | [`include/battery_monitor_types.h`](include/battery_monitor_types.h) | Fixed-record persistence and pure rule/SOC helpers                   |

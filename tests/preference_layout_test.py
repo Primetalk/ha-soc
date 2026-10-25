@@ -15,14 +15,20 @@ def allocation_order(source):
     objects = []
     for match in re.finditer(
         r"new\((\w+)\) (globals::RestoringGlobalsComponent<[^;]+|"
-        r"template_::TemplateNumber\(\)|wifi::WiFiComponent\(\))", source
+        r"template_::TemplateNumber\(\)|template_::TemplateSwitch\(\)|wifi::WiFiComponent\(\))", source
     ):
         name, kind = match.groups()
-        if kind.startswith("template_") and not re.search(
+        if kind.startswith("template_::TemplateNumber") and not re.search(
             rf"{name}->set_restore_value\(true\)", source
         ):
             continue
+        if kind.startswith("template_::TemplateSwitch") and not re.search(
+            rf"{name}->set_restore_mode\(switch_::SWITCH_RESTORE_", source
+        ):
+            continue
         priority = 250.0 if kind.startswith("wifi::") else 800.0
+        if kind.startswith("template_::TemplateSwitch"):
+            priority = 798.0
         override = re.search(rf"{name}->set_setup_priority\((-?[\d.]+)f?\)", source)
         if override:
             priority = float(override[1])
@@ -40,7 +46,10 @@ def main():
         "stop_load_level", "stop_load_hysteresis", "soc_checkpoint",
         "soc_rule_latches", "soc_event_journal", "wifi_wificomponent_id",
     ]
-    assert order == legacy + ["energy_checkpoint"], (
+    assert order == legacy + [
+        "energy_checkpoint", "full_charge_voltage", "full_charge_tail_current",
+        "automatic_full_charge_sync",
+    ], (
         "ESP8266 preference layout changed: new allocations must follow all legacy "
         f"allocations for upgrade/rollback compatibility. Actual order: {order}"
     )

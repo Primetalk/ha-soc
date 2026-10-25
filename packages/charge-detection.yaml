@@ -1,0 +1,109 @@
+# Inferred charging phases and automatic full anchoring from fresh V/I history.
+# Tail current is a 30-second average; the saved threshold survives upgrades.
+# No charger/BMS telemetry is implied. See docs/charge-detection.md.
+number:
+  - platform: template
+    name: Full Charge Voltage
+    id: full_charge_voltage
+    unit_of_measurement: V
+    mode: box
+    min_value: 12
+    max_value: 16
+    step: 0.05
+    initial_value: ${full_charge_voltage_default}
+    optimistic: true
+    restore_value: true
+    # Append after the legacy ESP8266 preferences and energy checkpoint (-50).
+    setup_priority: -60
+    on_value:
+      - script.execute: reset_charge_detection
+
+  - platform: template
+    name: Full Charge Tail Current
+    id: full_charge_tail_current
+    unit_of_measurement: A
+    mode: box
+    min_value: 0.05
+    max_value: 4
+    step: 0.05
+    initial_value: ${full_charge_tail_current_default}
+    optimistic: true
+    restore_value: true
+    setup_priority: -60
+    on_value:
+      - script.execute: reset_charge_detection
+
+switch:
+  - platform: template
+    name: Automatic Full Charge Sync
+    id: automatic_full_charge_sync
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+    # Append the new preference after both existing threshold numbers (-60).
+    setup_priority: -70
+    entity_category: config
+    turn_on_action:
+      - script.execute: reset_charge_detection
+    turn_off_action:
+      - script.execute: reset_charge_detection
+
+text_sensor:
+  - platform: template
+    name: Charging Phase
+    id: charging_phase
+    update_interval: never
+    icon: mdi:battery-charging
+
+binary_sensor:
+  - platform: template
+    name: Full Charge Detected
+    id: full_charge_detected
+    icon: mdi:battery-check
+
+script:
+  - id: reset_charge_detection
+    then:
+      - lambda: |-
+          battery_monitor::charge_detector().reset();
+          id(full_charge_detected).invalidate_state();
+          id(charging_phase).publish_state("unavailable");
+
+  - id: evaluate_charge_detection
+    then:
+      - lambda: |-
+          const uint32_t now = millis();
+          const bool healthy = id(last_measurement_ms) != 0 &&
+              id(last_voltage_ms) != 0 &&
+              now - id(last_measurement_ms) <= ${measurement_stale_after_ms} &&
+              now - id(last_voltage_ms) <= ${measurement_stale_after_ms} &&
+              id(battery_voltage).has_state() && id(battery_current).has_state() &&
+              id(full_charge_voltage).has_state() && id(full_charge_tail_current).has_state();
+          const battery_monitor::ChargeConfig config{
+              id(full_charge_voltage).state, id(full_charge_tail_current).state,
+              ${charge_detection_active_current_amps}, ${charge_detection_voltage_band_v},
+              ${charge_detection_window_ms}, ${measurement_stale_after_ms}};
+          auto &detector = battery_monitor::charge_detector();
+          const bool synchronize = detector.update(now, id(battery_voltage).state,
+              id(battery_current).state, healthy, config);
+          if (detector.phase() == battery_monitor::ChargePhase::Unavailable) {
+            id(full_charge_detected).invalidate_state();
+          } else {
+            id(full_charge_detected).publish_state(detector.full());
+          }
+          id(charging_phase).publish_state(battery_monitor::charge_phase_name(detector.phase()));
+          if (synchronize && id(automatic_full_charge_sync).state) {
+            id(anchor_full_soc).execute(true);
+          }
+
+interval:
+  - interval: 1s
+    then:
+      - if:
+          condition:
+            lambda: |-
+              const uint32_t now = millis();
+              return id(last_voltage_ms) == 0 || id(last_measurement_ms) == 0 ||
+                  now - id(last_voltage_ms) > ${measurement_stale_after_ms} ||
+                  now - id(last_measurement_ms) > ${measurement_stale_after_ms};
+          then:
+            - script.execute: reset_charge_detection

@@ -101,9 +101,11 @@ All SOC and power calculations consume the same normalized convention.
 
 ### Current-state deadband
 
-A small current range around zero used only to label the state as charging,
-discharging, or idle without rapid label changes. This project's deadband does
-not erase current from coulomb counting.
+The current-direction indicators use hysteresis: charging starts above 0.3 A
+and ends below 0.1 A, with each transition requiring ten continuous seconds.
+Discharging uses the symmetric negative thresholds. Between thresholds the
+previous direction is retained. This affects labels only; the full measured
+current still enters SOC and energy integration.
 
 ### Plausibility range
 
