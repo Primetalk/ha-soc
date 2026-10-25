@@ -91,6 +91,7 @@ Without Task, run the underlying repository and helper checks directly:
 
 ```sh
 python3 tests/validate_repository.py
+python3 tests/repository_validation_test.py
 
 temp_dir="$(mktemp -d "${TMPDIR:-/tmp}/battery-monitor-helper-tests.XXXXXX")"
 trap 'rm -rf -- "${temp_dir}"' EXIT
@@ -228,3 +229,9 @@ python3 tests/preference_layout_test.py .esphome/build/battery-monitor-esp8266/s
 The legacy allocation prefix is an OTA upgrade/rollback compatibility contract.
 New preferences must be appended after it; the energy checkpoint uses an explicit
 setup priority to preserve the existing record offsets.
+Firmware CI runs this check after compiling the ESP8266 target.
+
+Both entry points share `packages/common.yaml`. The offline validator follows
+local includes and verifies copied header dependencies, rather than requiring
+every package and header to be listed directly in each entry point. Behavioral
+tests for this traversal run with `task validate` and in firmware CI.

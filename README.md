@@ -320,6 +320,7 @@ examples are in [`docs/home-assistant.md`](docs/home-assistant.md).
 | Path                                                                 | Purpose                                                              |
 | -------------------------------------------------------------------- | -------------------------------------------------------------------- |
 | [`battery-monitor.yaml`](battery-monitor.yaml)                       | Canonical composition and ESP32 framework                            |
+| [`packages/common.yaml`](packages/common.yaml)                       | Shared package composition, project metadata, and preferences         |
 | [`packages/battery-config.yaml`](packages/battery-config.yaml)       | Hardware, timing, profile, and rule defaults                         |
 | [`packages/connectivity.yaml`](packages/connectivity.yaml)           | Wi-Fi, encrypted API, OTA, time, and diagnostics                     |
 | [`packages/measurement.yaml`](packages/measurement.yaml)             | INA219 measurements, sign normalization, freshness, and current mode |
@@ -327,7 +328,7 @@ examples are in [`docs/home-assistant.md`](docs/home-assistant.md).
 | [`packages/charge-detection.yaml`](packages/charge-detection.yaml) | Charging phases, full detection, and automatic synchronization |
 | [`packages/soc-rules.yaml`](packages/soc-rules.yaml)                 | Hysteretic conditions and latest-event journal                       |
 | [`packages/display.yaml`](packages/display.yaml)                     | SSD1306 status pages                                                 |
-| [`include/battery_monitor_types.h`](include/battery_monitor_types.h) | Fixed-record persistence and pure rule/SOC helpers                   |
+| [`include/battery_monitor_types.h`](include/battery_monitor_types.h) | Umbrella for focused persistence, rule, SOC, and measurement helpers |
 
 </details>
 

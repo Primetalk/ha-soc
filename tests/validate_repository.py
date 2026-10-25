@@ -118,7 +118,9 @@ ESP32_C3_STRAPPING_PINS = {"GPIO2", "GPIO8", "GPIO9"}
 
 CANONICAL_TEXT_PATHS = {
     "battery-monitor.yaml",
-    "include/battery_monitor_types.h",
+    "battery-monitor-esp8266.yaml",
+    "packages/common.yaml",
+    *(path.relative_to(ROOT).as_posix() for path in (ROOT / "include").glob("*.h")),
     *EXPECTED_PACKAGES,
 }
 
@@ -570,45 +572,80 @@ def check_rendered_schematics(checks: Checks) -> None:
         )
 
 
+def repository_local_path(path: Path, root: Path) -> Path:
+    resolved = path.resolve()
+    if not resolved.is_relative_to(root.resolve()):
+        raise ValueError(f"local include escapes the repository: {path}")
+    if not resolved.exists():
+        raise ValueError(f"local include is absent: {path}")
+    return resolved
+
+
+def local_yaml_sources(entry: str, root: Path = ROOT) -> dict[Path, str]:
+    """Follow this project's local !include tags, independently of package layout.
+
+    This offline file/dependency check is deliberately not an ESPHome YAML parser;
+    ESPHome configuration validation checks the resolved schema in firmware CI.
+    """
+    sources: dict[Path, str] = {}
+    visiting: set[Path] = set()
+
+    def visit(path: Path) -> None:
+        path = repository_local_path(path, root)
+        if path in visiting:
+            raise ValueError(f"local YAML include cycle at {path}")
+        if path in sources:
+            return
+        visiting.add(path)
+        text = path.read_text(encoding="utf-8")
+        for match in re.finditer(r"^\s*[^#\n]+:\s*!include\s+([^\s#]+)", text, re.MULTILINE):
+            visit(path.parent / match[1].strip("\"'"))
+        visiting.remove(path)
+        sources[path] = text
+
+    visit(root / entry)
+    return sources
+
+
+def local_cpp_sources(yaml_sources: dict[Path, str], root: Path = ROOT) -> dict[Path, str]:
+    sources: dict[Path, str] = {}
+    for text in yaml_sources.values():
+        for include in re.findall(r"^\s+-\s+(include(?:/[^\s#]+)?)\s*$", text, re.MULTILINE):
+            path = repository_local_path(root / include, root)
+            paths = sorted(path.rglob("*.h")) if path.is_dir() else [path]
+            for header in paths:
+                header = repository_local_path(header, root)
+                sources[header] = header.read_text(encoding="utf-8")
+    for path, text in sources.items():
+        for include in re.findall(r'^\s*#include\s+"([^"\n]+)"', text, re.MULTILINE):
+            if include.startswith("esphome/"):
+                continue
+            dependency = repository_local_path(path.parent / include, root)
+            if dependency not in sources:
+                raise ValueError(f"header is not copied by esphome.includes: {dependency}")
+    return sources
+
+
 def check_canonical_composition(checks: Checks) -> None:
-    entry = read_text("battery-monitor.yaml")
-    package_paths = set(
-        re.findall(r"^\s+[a-zA-Z0-9_]+:\s*!include\s+([^\s#]+)\s*$", entry, re.MULTILINE)
-    )
-    checks.require(
-        package_paths == EXPECTED_PACKAGES,
-        "canonical package set differs from the approved packages: "
-        f"found {sorted(package_paths)}",
-    )
-
-    local_includes = set(
-        re.findall(r"^\s+-\s+(include/[^\s#]+)\s*$", entry, re.MULTILINE)
-    )
-    checks.require(
-        local_includes == {"include/battery_monitor_types.h", "include/charge_detection.h"},
-        f"unexpected canonical C++ include set: {sorted(local_includes)}",
-    )
-    for relative_path in sorted(package_paths | local_includes):
-        checks.require(
-            (ROOT / relative_path).is_file(),
-            f"canonical configuration references an absent local file: {relative_path}",
-        )
-
-    font_paths: set[str] = set()
-    for package_path in package_paths:
-        font_paths.update(
-            re.findall(
-                r"^\s+-?\s*file:\s*([^\s#]+)\s*$",
-                read_text(package_path),
-                re.MULTILINE,
-            )
-        )
-    checks.require(bool(font_paths), "canonical configuration contains no local font reference")
-    for relative_path in sorted(font_paths):
-        checks.require(
-            (ROOT / relative_path).is_file(),
-            f"canonical configuration references an absent font: {relative_path}",
-        )
+    for entry in ("battery-monitor.yaml", "battery-monitor-esp8266.yaml"):
+        try:
+            sources = local_yaml_sources(entry)
+            headers = local_cpp_sources(sources)
+        except (ValueError, OSError) as error:
+            checks.failures.append(f"invalid local composition for {entry}: {error}")
+            continue
+        package_paths = {path.relative_to(ROOT).as_posix() for path in sources}
+        checks.require(EXPECTED_PACKAGES <= package_paths,
+                       f"{entry} omits required packages: {sorted(EXPECTED_PACKAGES - package_paths)}")
+        checks.require(bool(headers), f"{entry} has no local C++ headers")
+        font_paths = {
+            reference for text in sources.values()
+            for reference in re.findall(r"^\s+-?\s*file:\s*([^\s#]+)\s*$", text, re.MULTILINE)
+        }
+        checks.require(bool(font_paths), f"{entry} has no local font reference")
+        for reference in sorted(font_paths):
+            checks.require((ROOT / reference).is_file(),
+                           f"{entry} references an absent font: {reference}")
 
 
 def check_secrets_fixture(checks: Checks) -> None:

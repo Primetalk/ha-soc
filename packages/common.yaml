@@ -1,0 +1,24 @@
+# Shared firmware composition; keep package order stable for legacy preferences.
+packages:
+  battery_config: !include battery-config.yaml
+  connectivity: !include connectivity.yaml
+  measurement: !include measurement.yaml
+  soc: !include soc.yaml
+  soc_rules: !include soc-rules.yaml
+  charge_detection: !include charge-detection.yaml
+  display: !include display.yaml
+
+esphome:
+  name: ${device_name}
+  friendly_name: ${friendly_name}
+  min_version: 2026.8.0
+  includes:
+    - include
+  project:
+    name: primetalk.esphome-shunt
+    version: 0.3.0
+
+# Runtime settings and checkpoint writes are coalesced to limit flash wear.
+# The SOC live accumulator itself is never written on every measurement sample.
+preferences:
+  flash_write_interval: ${flash_write_interval}

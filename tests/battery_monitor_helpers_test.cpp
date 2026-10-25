@@ -574,6 +574,83 @@ void test_event_journal_validation() {
          "event with non-finite SOC must fail validation");
 }
 
+void test_event_recording_contract() {
+  uint32_t record[battery_monitor::EVENT_JOURNAL_WORDS] = {};
+  battery_monitor::store_soc_event(record, 2U, -1, 39.875f, true, true,
+                                  12U, 1700000000U, true);
+  const uint32_t expected[] = {
+      0x534F4345U, 1U, 1U, 12U, 1700000000U, 0x421F8000U, 2U, 2U, 7U};
+  expect(std::memcmp(record, expected, sizeof(expected)) == 0,
+         "event recording must preserve the nine-word legacy record and flags");
+  expect(std::strcmp(battery_monitor::soc_rule_name(2U), "capacity_warning") == 0,
+         "event and diagnostic consumers must share the public rule name");
+  expect(std::strcmp(battery_monitor::soc_rule_name(0U), "unknown") == 0 &&
+             std::strcmp(battery_monitor::soc_rule_name(0U, "none"), "none") == 0 &&
+             std::strcmp(battery_monitor::soc_rule_name(0U, "replay"), "replay") == 0,
+         "unknown rules must retain each consumer's existing fallback");
+  record[battery_monitor::EVENT_JOURNAL_SEQUENCE_INDEX] = UINT32_MAX;
+  battery_monitor::store_soc_event(record, 1U, 1, 101.0f, false, false, 13U, 99U, false);
+  expect(record[battery_monitor::EVENT_JOURNAL_SEQUENCE_INDEX] == 1U &&
+             record[battery_monitor::EVENT_JOURNAL_DIRECTION_INDEX] == 1U &&
+             record[battery_monitor::EVENT_JOURNAL_EPOCH_SECONDS_INDEX] == 0U &&
+             record[battery_monitor::EVENT_JOURNAL_FLAGS_INDEX] == 0U,
+         "sequence rollover must skip zero and invalid timestamps must be cleared");
+  record[battery_monitor::EVENT_JOURNAL_MAGIC_INDEX] = 0U;
+  battery_monitor::store_soc_event(record, 3U, -1, 29.0f, true, false, 14U, 0U, false);
+  expect(record[battery_monitor::EVENT_JOURNAL_SEQUENCE_INDEX] == 1U,
+         "an invalid previous journal must restart its sequence at one");
+}
+
+void test_rule_engine_lifecycle() {
+  const battery_monitor::SocRuleConfig config{95.0f, 2.0f, 40.0f, 2.0f, 30.0f, 2.0f};
+  uint32_t latches[battery_monitor::RULE_LATCH_WORDS] = {};
+  bool armed = false;
+  auto result = battery_monitor::evaluate_soc_rules(latches, 25.0f, config, true, false, armed);
+  expect(!result.ready && !armed && result.crossings == 0U && latches[2] == 6U,
+         "startup must reconstruct low-SOC latches without readiness or events");
+  result = battery_monitor::evaluate_soc_rules(latches, 31.0f, config, true, true, armed);
+  expect(result.ready && armed && result.crossings == 0U && latches[2] == 6U,
+         "arming must retain restored latches inside hysteresis without events");
+  result = battery_monitor::evaluate_soc_rules(latches, 100.0f, config, true, true, armed);
+  expect(result.ready && result.crossings == 1U && latches[2] == 1U,
+         "rising through the upper rule must emit only stop-charge activation");
+  result = battery_monitor::evaluate_soc_rules(latches, 94.0f, config, true, true, armed);
+  expect(result.crossings == 0U && latches[2] == 1U,
+         "the upper latch must hold inside its hysteresis band");
+  result = battery_monitor::evaluate_soc_rules(latches, 25.0f, config, true, true, armed);
+  expect(result.crossings == 6U && latches[2] == 6U,
+         "a large fall must report warning and stop-load activations together");
+  result = battery_monitor::evaluate_soc_rules(latches, 100.0f, config, false, true, armed);
+  expect(!result.ready && !armed && result.crossings == 0U && latches[2] == 6U,
+         "lost measurement or SOC authority must disarm and preserve stored latches");
+  result = battery_monitor::evaluate_soc_rules(latches, 100.0f, config, true, true, armed);
+  expect(result.ready && result.crossings == 0U && latches[2] == 1U,
+         "recovery must baseline current conditions without a synthetic crossing");
+  auto invalid = config;
+  invalid.stop_load_level = invalid.capacity_warning_level;
+  result = battery_monitor::evaluate_soc_rules(latches, 25.0f, invalid, true, true, armed);
+  expect(!result.ready && !armed && latches[2] == 1U,
+         "invalid threshold ordering must preserve latches and disarm the engine");
+  result = battery_monitor::evaluate_soc_rules(latches, 25.0f, config, true, true, armed);
+  expect(result.ready && result.crossings == 0U && latches[2] == 6U,
+         "configuration recovery must baseline without events");
+  armed = false;  // A valid runtime setting edit also requests reconstruction.
+  result = battery_monitor::evaluate_soc_rules(latches, 100.0f, config, true, true, armed);
+  expect(result.ready && result.crossings == 0U && latches[2] == 1U,
+         "valid setting edits must not fabricate crossings");
+}
+
+void test_sample_freshness() {
+  expect(!battery_monitor::sample_is_fresh(100U, 0U, 5000U),
+         "the legacy zero timestamp must remain an absent-sample sentinel");
+  expect(battery_monitor::sample_is_fresh(6000U, 1000U, 5000U),
+         "a sample at the stale boundary must remain fresh");
+  expect(!battery_monitor::sample_is_fresh(6001U, 1000U, 5000U),
+         "a sample past the stale boundary must be rejected");
+  expect(battery_monitor::sample_is_fresh(500U, UINT32_MAX - 499U, 1000U),
+         "freshness subtraction must remain safe through millis rollover");
+}
+
 void test_energy_tracking() {
   double charged = 0.0, discharged = 0.0;
   uint32_t previous_ms = 0;
@@ -645,6 +722,9 @@ int main() {
   test_hysteresis();
   test_plausibility_and_rule_configuration();
   test_event_journal_validation();
+  test_event_recording_contract();
+  test_rule_engine_lifecycle();
+  test_sample_freshness();
 
   if (failures != 0) {
     std::cerr << failures << " deterministic helper test(s) failed\n";

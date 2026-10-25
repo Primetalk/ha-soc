@@ -13,8 +13,10 @@ engineering reference, not a construction or commissioning shortcut.
 
 [`../battery-monitor.yaml`](../battery-monitor.yaml) is the default ESP32-C3
 entry point. The alternative
-[`../battery-monitor-esp8266.yaml`](../battery-monitor-esp8266.yaml) reuses the same
-seven packages with platform-specific overrides documented in
+[`../battery-monitor-esp8266.yaml`](../battery-monitor-esp8266.yaml) reuses
+[`../packages/common.yaml`](../packages/common.yaml), which composes the same
+seven functional packages and supplies shared project metadata and preferences.
+The entry points retain platform-specific overrides documented in
 [`esp8266-migration.md`](esp8266-migration.md):
 
 | Package                                                              | Responsibility                                                                                                 |
@@ -27,10 +29,23 @@ seven packages with platform-specific overrides documented in
 | [`../packages/soc-rules.yaml`](../packages/soc-rules.yaml)           | Runtime thresholds, hysteretic latches, authoritative conditions, event journal, and event delivery            |
 | [`../packages/display.yaml`](../packages/display.yaml)               | Local measurement, SOC, health, connectivity, and rule-status pages                                            |
 
-Shared fixed-record and pure helper logic lives in
-[`../include/battery_monitor_types.h`](../include/battery_monitor_types.h). Host
-tests exercise those helpers in
+[`../include/battery_monitor_types.h`](../include/battery_monitor_types.h) remains
+the shared umbrella include. Its implementation is divided by responsibility:
+
+| Header | Responsibility |
+| ------ | -------------- |
+| [`persistence.h`](../include/persistence.h) | Fixed legacy record layouts, codecs, checkpoint storage, and event recording |
+| [`battery_math.h`](../include/battery_math.h) | SOC/energy integration, capacity rescaling, anchoring, and plausibility |
+| [`soc_rules.h`](../include/soc_rules.h) | Configuration validation, hysteresis, rule reconstruction/crossings, and public rule names |
+| [`current_direction.h`](../include/current_direction.h) | Mutually exclusive current direction with hysteresis and dwell |
+| [`measurement_validity.h`](../include/measurement_validity.h) | Rollover-safe sample freshness with the existing zero sentinel |
+| [`sensor_availability.h`](../include/sensor_availability.h) | ESPHome numeric-sensor availability adapter |
+| [`charge_detection.h`](../include/charge_detection.h) | Observed charge-process inference |
+
+Host tests exercise the pure helpers in
 [`../tests/battery_monitor_helpers_test.cpp`](../tests/battery_monitor_helpers_test.cpp).
+The shared composition copies the complete local `include` directory so sibling
+header dependencies remain available in generated firmware.
 
 The packages are implementation boundaries, not independent products. Hardware
 settings such as shunt resistance, pins, addresses, and polarity are compile-time
@@ -75,6 +90,10 @@ Normalized current and signed power derive from the same raw-current sample.
 - a sample age no greater than the configured stale interval;
 - finite Battery Voltage; and
 - finite Battery Current.
+
+Rule readiness uses that same current-freshness policy. Charge-process inference
+additionally requires a fresh voltage timestamp. Both use the same age helper,
+but intentionally retain their existing consumer-specific requirements.
 
 If current samples become stale, firmware invalidates voltage, current, power,
 raw diagnostics, shunt voltage, and charging/discharging/idle states. It does not
