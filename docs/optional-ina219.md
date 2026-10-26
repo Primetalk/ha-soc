@@ -12,7 +12,16 @@ adds the two signed branch currents. The main channel is positive for charge,
 whereas the auxiliary channel is positive for consumption, so the conversion
 is `I_battery = I_main + (-I_aux_consumption)`. A detected board
 that later stops providing fresh data makes combined measurements unavailable
-until recovery. Restart re-detects the boards; addition/removal requires isolated
+until recovery. The adapter waits for a completed conversion before accepting
+current, including after startup or a sensor reset. If initialization fails or
+the sensor loses its calibration, it retries native initialization no more than
+once every five seconds. Recovery resumes measurement after a new conversion;
+it does not estimate consumption during the unavailable interval. Logs identify
+read failures, overflow, lost calibration, and waiting for conversion. The
+optional adapter exposes only current; battery voltage and combined power still
+come from the main measurement pipeline.
+
+Restart re-detects the boards; addition/removal requires isolated
 power and a restart. Missing-at-boot fallback cannot distinguish an intentional
 single-board build from a failed or misaddressed auxiliary board. Check the
 selected mode against the actual wiring during commissioning.

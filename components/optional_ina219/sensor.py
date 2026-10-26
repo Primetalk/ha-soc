@@ -3,7 +3,14 @@ from esphome.components import i2c
 from esphome.components.ina219 import sensor as ina219_sensor
 import esphome.config_validation as cv
 import esphome.final_validate as fv
-from esphome.const import CONF_ADDRESS, CONF_I2C_ID, CONF_ID
+from esphome.const import (
+    CONF_ADDRESS,
+    CONF_BUS_VOLTAGE,
+    CONF_I2C_ID,
+    CONF_ID,
+    CONF_POWER,
+    CONF_SHUNT_VOLTAGE,
+)
 
 AUTO_LOAD = ["ina219"]
 DEPENDENCIES = ["i2c"]
@@ -14,7 +21,14 @@ OptionalINA219Component = optional_ina219_ns.class_(
 )
 
 CONFIG_SCHEMA = ina219_sensor.CONFIG_SCHEMA.extend(
-    {cv.GenerateID(): cv.declare_id(OptionalINA219Component)}
+    {
+        cv.GenerateID(): cv.declare_id(OptionalINA219Component),
+        # A single native read must either publish current or fail. Multiple
+        # outputs could publish partial data before a later read fails.
+        cv.Optional(CONF_BUS_VOLTAGE): cv.invalid("optional_ina219 only supports current"),
+        cv.Optional(CONF_SHUNT_VOLTAGE): cv.invalid("optional_ina219 only supports current"),
+        cv.Optional(CONF_POWER): cv.invalid("optional_ina219 only supports current"),
+    }
 )
 
 
@@ -39,5 +53,5 @@ def _validate_unique_address(config):
 
 FINAL_VALIDATE_SCHEMA = _validate_unique_address
 
-# All native configuration setters are forwarded by the composing adapter.
+# Reuse native calibration configuration and current sensor generation.
 to_code = ina219_sensor.to_code

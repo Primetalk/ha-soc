@@ -13,6 +13,9 @@ class PollingComponent {
   virtual void on_powerdown() {}
   void mark_failed() { failed_ = true; app_error = true; }
   bool is_failed() const { return failed_; }
+  void reset_to_construction_state() {
+    if (failed_) { failed_ = false; app_error = false; }
+  }
   void status_set_warning() { warning_ = true; }
   void status_clear_warning() { warning_ = false; }
   bool status_has_warning() const { return warning_; }

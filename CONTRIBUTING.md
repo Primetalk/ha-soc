@@ -110,8 +110,9 @@ python tests/optional_ina219_test.py
 python tests/measurement_pipeline_test.py
 ```
 
-It checks boot absence/presence, initialization/read faults, overflow, recovery,
-and conflicting I2C addresses. The pipeline test executes production YAML
+It checks boot absence/presence, conversion readiness, initialization/read faults,
+overflow, recovery after calibration loss, retry timing across clock rollover,
+current-only configuration, and conflicting I2C addresses. The pipeline test executes production YAML
 lambdas against a controlled clock and sensor recorder, including fault/stale
 invalidation and recovery without bridging gaps. `task test:optional-ina219` runs both;
 set `ESPHOME_PYTHON` when that environment's Python is not the default. Firmware

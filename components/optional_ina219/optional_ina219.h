@@ -17,31 +17,20 @@ class OptionalINA219Component : public PollingComponent, public i2c::I2CDevice {
   void set_shunt_resistance_ohm(float value) { delegate_.set_shunt_resistance_ohm(value); }
   void set_max_current_a(float value) { delegate_.set_max_current_a(value); }
   void set_max_voltage_v(float value) { delegate_.set_max_voltage_v(value); }
-  void set_bus_voltage_sensor(sensor::Sensor *value) {
-    bus_voltage_sensor_ = value;
-    delegate_.set_bus_voltage_sensor(value);
-  }
-  void set_shunt_voltage_sensor(sensor::Sensor *value) {
-    shunt_voltage_sensor_ = value;
-    delegate_.set_shunt_voltage_sensor(value);
-  }
   void set_current_sensor(sensor::Sensor *value) {
     current_sensor_ = value;
     delegate_.set_current_sensor(value);
   }
-  void set_power_sensor(sensor::Sensor *value) {
-    power_sensor_ = value;
-    delegate_.set_power_sensor(value);
-  }
 
  protected:
-  void publish_invalid_();
+  void initialize_();
+  void retry_initialization_();
+  void publish_invalid_(const char *reason);
   ina219::INA219Component delegate_;
   bool present_{false};
-  sensor::Sensor *bus_voltage_sensor_{nullptr};
-  sensor::Sensor *shunt_voltage_sensor_{nullptr};
+  uint32_t last_initialization_ms_{0};
+  const char *fault_reason_{nullptr};
   sensor::Sensor *current_sensor_{nullptr};
-  sensor::Sensor *power_sensor_{nullptr};
 };
 
 }  // namespace esphome::optional_ina219

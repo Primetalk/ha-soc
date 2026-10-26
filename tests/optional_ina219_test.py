@@ -49,9 +49,12 @@ display:
     address: 0x3C
 """
 
-    def run_configuration(self, directory, address, command="config"):
+    def run_configuration(self, directory, address, command="config", extra_output=None):
         config = Path(directory) / "test.yaml"
-        config.write_text(self.configuration(address))
+        contents = self.configuration(address)
+        if extra_output:
+            contents = contents.replace("    id: aux_monitor", f"    id: aux_monitor\n    {extra_output}:\n      name: Unsupported Output")
+        config.write_text(contents)
         args = [sys.executable, "-m", "esphome", command, str(config)]
         if command == "compile":
             args.append("--only-generate")
@@ -68,6 +71,13 @@ display:
                 result = self.run_configuration(tmp, address)
                 self.assertNotEqual(result.returncode, 0, "conflicting I2C address was accepted")
                 self.assertIn("already used on this I2C bus", result.stdout + result.stderr)
+
+    def test_only_current_output_is_supported(self):
+        for output in ("bus_voltage", "shunt_voltage", "power"):
+            with self.subTest(output=output), tempfile.TemporaryDirectory(prefix="optional-ina219-output-") as tmp:
+                result = self.run_configuration(tmp, "0x41", extra_output=output)
+                self.assertNotEqual(result.returncode, 0, "unsupported output was accepted")
+                self.assertIn("only supports current", result.stdout + result.stderr)
 
     def test_same_address_on_an_independent_bus_is_accepted(self):
         with tempfile.TemporaryDirectory(prefix="optional-ina219-two-buses-") as tmp:
