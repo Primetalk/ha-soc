@@ -651,6 +651,43 @@ void test_sample_freshness() {
          "freshness subtraction must remain safe through millis rollover");
 }
 
+void test_parallel_branch_current() {
+  using battery_monitor::parallel_branch_current;
+  expect_near(parallel_branch_current(10.0f, false, NAN, false), 10.0, 1e-6,
+              "an absent auxiliary sensor must preserve single-shunt accounting");
+  expect_near(parallel_branch_current(0.0f, true, 0.06f, true), -0.06, 1e-7,
+              "auxiliary consumption must count when main current is zero");
+  expect_near(parallel_branch_current(10.0f, true, 0.06f, true), 9.94, 1e-6,
+              "auxiliary consumption must reduce net charging current");
+  expect_near(parallel_branch_current(-10.0f, true, 0.06f, true), -10.06, 1e-6,
+              "auxiliary consumption must add to main-branch discharge");
+  expect_near(parallel_branch_current(0.0f, true, -0.06f, true), 0.06, 1e-7,
+              "signed auxiliary measurements must not be rectified");
+  expect(std::isnan(parallel_branch_current(0.0f, true, 0.06f, false)),
+         "a detected sensor with stale data must not silently become absent");
+  expect(std::isnan(parallel_branch_current(10.0f, true, NAN, true)),
+         "a detected sensor with invalid data must invalidate combined current");
+  expect(std::isnan(parallel_branch_current(NAN, true, 0.06f, true)),
+         "auxiliary sensing cannot replace missing main-branch measurements");
+
+  double remaining = 300.0;
+  double charged = 0.0, discharged = 0.0;
+  uint32_t previous = 0;
+  bool baseline = false;
+  for (uint32_t second = 1; second <= 3601; ++second) {
+    const float current = parallel_branch_current(0.0f, true, 0.06f, true);
+    if (second > 1)
+      remaining = battery_monitor::integrate_remaining_ah(remaining, current, 99.0, 1000U);
+    battery_monitor::integrate_energy_sample(12.8f * current, second * 1000U,
+        5000U, charged, discharged, previous, baseline);
+  }
+  expect_near(remaining, 299.94, 1e-7,
+              "one hour of auxiliary-only discharge must remove 0.06 Ah");
+  expect_near(discharged, 0.000768, 1e-10,
+              "auxiliary-only consumption must appear in battery energy totals");
+  expect(charged == 0.0, "auxiliary discharge must not accumulate charged energy");
+}
+
 void test_energy_tracking() {
   double charged = 0.0, discharged = 0.0;
   uint32_t previous_ms = 0;
@@ -725,6 +762,7 @@ int main() {
   test_event_recording_contract();
   test_rule_engine_lifecycle();
   test_sample_freshness();
+  test_parallel_branch_current();
 
   if (failures != 0) {
     std::cerr << failures << " deterministic helper test(s) failed\n";

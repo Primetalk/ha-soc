@@ -57,7 +57,7 @@ The public current convention is fixed:
 | Display name         | ESPHome ID                 | Expected Home Assistant ID                          | Unit/type         | Contract                                                                     |
 | -------------------- | -------------------------- | --------------------------------------------------- | ----------------- | ---------------------------------------------------------------------------- |
 | Battery Voltage      | `battery_voltage`          | `sensor.battery_monitor_battery_voltage`            | V                 | INA219 bus voltage measured at battery-side VIN- relative to common negative |
-| Battery Current      | `battery_current`          | `sensor.battery_monitor_battery_current`            | A                 | Normalized current; positive charging, negative discharging                  |
+| Battery Current      | `battery_current`          | `sensor.battery_monitor_battery_current`            | A                 | Net current from required branches; positive charging, negative discharging                  |
 | Battery Power        | `battery_power`            | `sensor.battery_monitor_battery_power`              | W                 | Battery voltage multiplied by normalized current                             |
 | Shunt Voltage        | `shunt_voltage_mv`         | `sensor.battery_monitor_shunt_voltage`              | mV                | Differential shunt voltage diagnostic                                        |
 | INA219 Raw Current   | `ina219_current_raw`       | `sensor.battery_monitor_ina219_raw_current`         | A                 | Pre-polarity diagnostic; disabled by default                                 |
@@ -74,6 +74,22 @@ fabricated zero. `Measurement Healthy` turns off, the SOC rule engine becomes
 unready, and authoritative rule conditions become unavailable. Integration
 resumes from a new timing baseline when valid samples return; firmware does not
 integrate across the gap.
+
+The optional board adds these entities with stable names in both firmware
+layouts:
+
+| Display name | ESPHome ID | Contract |
+| --- | --- | --- |
+| Auxiliary Current | `auxiliary_current` | Amperes, positive toward small consumers; unavailable when absent or faulty |
+| Auxiliary INA219 Present | `auxiliary_ina219_present` | Diagnostic binary; address acknowledged at boot, stays on through subsequent faults |
+| Auxiliary Measurement Healthy | `auxiliary_measurement_healthy` | Diagnostic binary; detected board has a finite, fresh current reading |
+
+`Battery Current` already includes this separate branch when detected. Do not
+subtract Auxiliary Current again in Home Assistant or add its energy separately.
+A zero main-shunt reading and `0.060 A` auxiliary consumption yield `-0.060 A`
+Battery Current. An absent board leaves the original accounting unchanged; a
+board detected at boot that becomes unavailable disables the combined measurement.
+See [optional INA219](optional-ina219.md) for the required wiring.
 
 ## SOC entities and controls
 

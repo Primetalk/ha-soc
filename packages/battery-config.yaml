@@ -42,6 +42,13 @@ substitutions:
   i2c_scl_pin: GPIO1
   i2c_frequency: 400kHz
   ina219_address: "0x40"
+  # Optional separate low-current supply branch; detected automatically at boot.
+  # The auxiliary board retains its own R100 resistor (unlike the main board).
+  aux_ina219_address: "0x41"
+  aux_shunt_resistance: "0.1 ohm"
+  aux_max_current: "3.2 A"
+  # VIN+ toward battery, VIN- toward small consumers: positive = consumption.
+  aux_current_polarity_multiplier: "1.0"
   oled_address: "0x3C"
   oled_rotation: "180"
 

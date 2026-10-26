@@ -82,9 +82,9 @@ The Task interface exposes:
 | ------------------------ | -------------------------------------------------------------------- |
 | `task validate`          | Run deterministic clean-checkout and repository invariants           |
 | `task test:helpers`      | Compile and run the production C++ helper tests with strict warnings |
-| `task schematic`         | Regenerate both committed hardware schematic SVGs                    |
-| `task schematic:check`   | Verify both committed SVGs without modifying them                    |
-| `task schematic:preview` | Render both diagrams and create local macOS Quick Look PNG previews  |
+| `task schematic`         | Regenerate all committed hardware schematic SVGs                    |
+| `task schematic:check`   | Verify all committed SVGs without modifying them                    |
+| `task schematic:preview` | Render all diagrams and create local macOS Quick Look PNG previews  |
 | `task check`             | Run validation, helper tests, and schematic freshness checking       |
 
 Without Task, run the underlying repository and helper checks directly:
@@ -100,6 +100,23 @@ binary="${temp_dir}/battery-monitor-helper-tests"
   tests/battery_monitor_helpers_test.cpp -o "${binary}"
 "${binary}"
 ```
+
+The optional adapter test uses the installed ESPHome's real INA219 driver with
+simulated I2C transactions. Run it with the Python interpreter from the pinned
+ESPHome environment:
+
+```sh
+python tests/optional_ina219_test.py
+python tests/measurement_pipeline_test.py
+```
+
+It checks boot absence/presence, conversion readiness, initialization/read faults,
+overflow, recovery after calibration loss, retry timing across clock rollover,
+current-only configuration, and conflicting I2C addresses. The pipeline test executes production YAML
+lambdas against a controlled clock and sensor recorder, including fault/stale
+invalidation and recovery without bridging gaps. `task test:optional-ina219` runs both;
+set `ESPHOME_PYTHON` when that environment's Python is not the default. Firmware
+CI runs it for both board targets.
 
 When firmware changes, validate and compile both entry points. See
 [`README.md`](README.md) for `battery-monitor.yaml` and
@@ -122,14 +139,27 @@ after each target build. Visual and physical acceptance still follow
 
 ## Render the hardware diagrams
 
-The two editable CircuitikZ sources and their generated artifacts are:
+The editable CircuitikZ entry points and their generated artifacts are:
 
 | CircuitikZ source                                                                      | Committed SVG                                                                          | Scope                                                        |
 | -------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
 | [`hardware/battery-monitor-schematic.tex`](hardware/battery-monitor-schematic.tex)     | [`hardware/battery-monitor-schematic.svg`](hardware/battery-monitor-schematic.svg)     | Detailed SOC-monitor wiring                                  |
 | [`hardware/battery-system-installation.tex`](hardware/battery-system-installation.tex) | [`hardware/battery-system-installation.svg`](hardware/battery-system-installation.svg) | Conceptual battery, BMS, charger, inverter, and ATS overview |
+| [`hardware/battery-monitor-overview.tex`](hardware/battery-monitor-overview.tex) | [`hardware/battery-monitor-overview.svg`](hardware/battery-monitor-overview.svg) | Common host wiring with inline M1 and shared buses |
+| [`hardware/battery-monitor-ina219.tex`](hardware/battery-monitor-ina219.tex) | [`hardware/battery-monitor-ina219.svg`](hardware/battery-monitor-ina219.svg) | Replaceable INA219 module |
+| [`hardware/battery-monitor-bypass.tex`](hardware/battery-monitor-bypass.tex) | [`hardware/battery-monitor-bypass.svg`](hardware/battery-monitor-bypass.svg) | Wire-only replacement module |
+| [`hardware/battery-monitor-external.tex`](hardware/battery-monitor-external.tex) | [`hardware/battery-monitor-external.svg`](hardware/battery-monitor-external.svg) | Independent AC–DC adapter module |
 
-Both SVGs are committed so documentation consumers do not need a TeX
+The three module entry points select a variant in
+[`hardware/battery-monitor-modular.tex`](hardware/battery-monitor-modular.tex).
+Edit that shared source for module internals, keeping all three outlines and
+connector positions aligned. Host placement and bus routing belong in
+`battery-monitor-overview.tex`. Preserve matching M1 pin numbers between the
+overview, detail drawings and the interface table in `docs/optional-ina219.md`.
+Render the entry points with the script below rather than compiling the shared
+module source alone.
+
+All SVGs are committed so documentation consumers do not need a TeX
 installation.
 
 Install TeX Live or MacTeX with CircuitikZ, `latexmk`, `dvisvgm`, and
@@ -146,11 +176,11 @@ Verify freshness without modifying the committed SVG with:
 ```
 
 The renderer resolves the repository root from its own location, so it works
-from any current directory. It renders both sources through DVI with
+from any current directory. It renders every entry point through DVI with
 `dvisvgm --no-fonts --exact`, writes per-diagram intermediates, logs, and
 comparison candidates under `build/schematic/`, and rejects font-dependent SVG
 text or incomplete PostScript-special conversion. It validates every candidate
-before replacing either committed artifact and rolls back prior replacements if
+before replacing any committed artifact and rolls back prior replacements if
 an unexpected update failure occurs. Check mode reports every absent or stale
 pair and never modifies a committed SVG.
 
@@ -162,13 +192,13 @@ Ghostscript shared library must be used:
 DVISVGM_LIBGS=/path/to/libgs.dylib ./scripts/render-schematic.sh
 ```
 
-Regenerate and commit both SVGs whenever either CircuitikZ source changes. The
+Regenerate and commit affected SVGs whenever a CircuitikZ source changes. The
 unchanged SVG should remain byte-for-byte deterministic under the same
 toolchain.
 
 ### macOS Quick Look previews
 
-On macOS, create raster previews of both freshly rendered diagrams with:
+On macOS, create raster previews of all freshly rendered diagrams with:
 
 ```sh
 task schematic:preview
@@ -191,7 +221,7 @@ The read-only
 [hardware schematic workflow](.github/workflows/hardware-schematic.yaml) is
 manual only: it does not run for pushes or pull requests. When dispatched, it
 installs the TeX toolchain on Ubuntu, calls the canonical renderer, and uploads
-both generated files from `hardware/` as the `hardware-schematic-svgs` artifact.
+all generated files from `hardware/` as the `hardware-schematic-svgs` artifact.
 It never pushes generated output; regenerate, check, review, and commit the
 canonical SVGs locally.
 
@@ -206,16 +236,16 @@ targets. Firmware compilation does not replace physical commissioning.
 | Path                                                                                     | Purpose                                                         |
 | ---------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
 | [`Taskfile.yml`](Taskfile.yml)                                                           | Optional interface for recurring local commands                 |
-| [`scripts/render-schematic.sh`](scripts/render-schematic.sh)                             | Canonical transactional local and CI renderer for both diagrams |
+| [`scripts/render-schematic.sh`](scripts/render-schematic.sh)                             | Canonical transactional local and CI renderer for all diagrams |
 | [`scripts/preview-schematics.sh`](scripts/preview-schematics.sh)                         | macOS Quick Look PNG preview helper                             |
 | [`tests/validate_repository.py`](tests/validate_repository.py)                           | Clean-checkout and repository-invariant checks                  |
 | [`tests/battery_monitor_helpers_test.cpp`](tests/battery_monitor_helpers_test.cpp)       | Deterministic host tests for production helpers                 |
 | [`.github/workflows/esphome.yaml`](.github/workflows/esphome.yaml)                       | Firmware validation and compilation                             |
-| [`.github/workflows/hardware-schematic.yaml`](.github/workflows/hardware-schematic.yaml) | Manual rendering and two-SVG artifact upload                    |
+| [`.github/workflows/hardware-schematic.yaml`](.github/workflows/hardware-schematic.yaml) | Manual rendering and SVG artifact upload                    |
 
 Before submitting a change, run `task check` or all equivalent underlying
 commands. Run ESPHome validation and compilation whenever firmware inputs
-change, and regenerate both SVGs whenever either schematic source changes. On
+change, and regenerate affected SVGs whenever a schematic source changes. On
 macOS, use `task schematic:preview` for a final visual review when a diagram was
 edited.
 

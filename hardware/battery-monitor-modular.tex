@@ -1,0 +1,128 @@
+% Common source for battery-monitor-{ina219,bypass,external}.tex.
+% SupplyVariant: 0 = measured battery branch, 1 = bus-side wire link,
+% 2 = external isolated adapter. Render the wrappers, not this file directly.
+\documentclass[tikz,border=0pt]{standalone}
+\usepackage[T1]{fontenc}
+\usepackage[american]{circuitikz}
+\usetikzlibrary{arrows.meta,backgrounds,fit}
+\definecolor{MainBus}{HTML}{9C2F24}
+\definecolor{SenseWire}{HTML}{1769AA}
+\definecolor{SdaWire}{HTML}{00838F}
+\definecolor{SclWire}{HTML}{6A4C93}
+\definecolor{LogicPower}{HTML}{B05A00}
+\definecolor{ModuleFill}{HTML}{F4F7FA}
+\tikzset{
+  power/.style={draw=LogicPower,line width=1pt},
+  main/.style={draw=MainBus,line width=2pt},
+  sense/.style={draw=SenseWire,line width=1pt},
+  sda/.style={draw=SdaWire,line width=1pt},
+  scl/.style={draw=SclWire,line width=1pt},
+  body/.style={draw=black!65,fill=ModuleFill,rounded corners=2pt,line width=.8pt},
+  title/.style={font=\sffamily\bfseries,align=center},
+  note/.style={font=\sffamily\scriptsize,align=center},
+  pin/.style={font=\sffamily\tiny,inner sep=2pt},
+  net/.style={font=\sffamily\scriptsize\bfseries,inner sep=2pt,fill=white},
+}
+\newcommand{\Port}[3]{\filldraw[fill=white,draw=black!70] (#1) circle (2pt);\node[pin,anchor=#2] at (#1) {#3};}
+\newcommand{\NC}[2]{\draw[black!55] (#1-.10,#2-.10) -- (#1+.10,#2+.10) (#1-.10,#2+.10) -- (#1+.10,#2-.10);}
+\begin{document}
+\begin{tikzpicture}[font=\sffamily]
+\begin{scope}[local bounding box=diagram-content]
+  \path[use as bounding box] (-3,-6.2) rectangle (24,4.8);
+  \ifcase\SupplyVariant
+    \node[title,font=\sffamily\Large\bfseries] at (10.5,4.2) {M1-A --- measured auxiliary supply};
+  \or
+    \node[title,font=\sffamily\Large\bfseries] at (10.5,4.2) {M1-B --- wire-only replacement};
+  \or
+    \node[title,font=\sffamily\Large\bfseries] at (10.5,4.2) {M1-C --- external adapter input};
+  \fi
+  \node[note] at (10.5,3.5) {Module detail. Connect to the seven numbered M1 pins in the common wiring overview.};
+  % Replaceable module: same seven-pin interface and dimensions in all variants.
+  % This detail repeats the host connector pin numbers; unused card pins are open.
+  \draw[body,dashed,line width=1.2pt] (0,-2.5) rectangle (10,2.5);
+  \node[title] at (5,2.05) {Replaceable supply module M1};
+  \draw[power] (-1.5,1) -- (0,1);
+  \draw[power] (-1.5,0) -- (0,0);
+  \node[net,anchor=east,text=LogicPower] at (-1.5,1) {BAT\_F+};
+  \node[net,anchor=east,text=LogicPower] at (-1.5,0) {BUS\_F+};
+  \Port{0,1}{north west}{1: BAT}
+  \Port{0,0}{north west}{2: BUS}
+  \draw[power] (10,0) -- (11.8,0);
+  \node[net,anchor=west,text=LogicPower] at (11.8,0) {AUX+};
+  \Port{10,0}{south east}{3: OUT}
+  \foreach \x/\label in {1.5/{4: GND},4/{5: VCC},6.5/{6: SDA},9/{7: SCL}} {
+    \Port{\x,-2.5}{south}{\label}
+  }
+  \draw (1.5,-2.5) -- (1.5,-3) node[ground] {};
+  \draw[power] (4,-2.5) -- (4,-3.15);
+  \node[net,anchor=north,text=LogicPower] at (4,-3.15) {+3V3};
+  \draw[sda] (6.5,-2.5) -- (6.5,-3.15);
+  \node[net,anchor=north,text=SdaWire] at (6.5,-3.15) {SDA};
+  \draw[scl] (9,-2.5) -- (9,-3.15);
+  \node[net,anchor=north,text=SclWire] at (9,-3.15) {SCL};
+
+  \ifcase\SupplyVariant
+    \draw[power] (0,1) -- (2,1) to[R,l_={$R100: 0.1\,\Omega$}] (7,1) -- (8.5,1) -- (8.5,0) -- (10,0);
+    \node[pin,anchor=south] at (2,1) {VIN+};
+    \node[pin,anchor=south] at (7,1) {VIN--};
+    \draw (0,0) -- (.7,0); \NC{.7}{0}
+    \node[pin,anchor=west] at (.9,0) {BUS open};
+    \draw[body,fill=white] (1,-1.7) rectangle (9.4,-.25);
+    \draw[sense] (2,1) -- (2,-.25) (7,1) -- (7,-.25);
+    \node[title] at (5,-.6) {INA219 \texttt{0x41}};
+    \node[note] at (5,-1.2) {Onboard shunt retained. A0 high, A1 low.};
+    \foreach \x in {1.5,4,6.5,9} {\draw (\x,-2.5) -- (\x,-1.7);}
+    \node[note,anchor=west,align=left] at (14,-1.6)
+      {Battery current = main current + signed auxiliary current.\\
+       Auxiliary consumption is positive on its sensor:\\
+       $I_{\rm aux,signed}=-I_{\rm aux,consumption}$.\\[3pt]
+       Example: $-2.00\,\mathrm{A}-0.06\,\mathrm{A}=-2.06\,\mathrm{A}$.};
+  \or
+    \draw (0,1) -- (.7,1); \NC{.7}{1}
+    \node[pin,anchor=west] at (.9,1) {BAT open};
+    \draw[power] (0,0) -- (10,0);
+    \node[note] at (5,-.65) {Plain wire: pin 2 to pin 3};
+    \foreach \x in {1.5,4,6.5,9} {
+      \draw (\x,-2.5) -- (\x,-2); \NC{\x}{-2}
+    }
+    \node[note] at (5,-1.3) {Pins 1, 4, 5, 6, 7: no connection};
+    \node[note,anchor=west,align=left] at (14,-1.6)
+      {All battery-supplied AUX loads pass through the main shunt.\\
+       Optional INA219 is absent: firmware uses main current.\\[3pt]
+       Do not link BAT to OUT on this card:\\
+       that would create an unmeasured battery load.};
+  \or
+    \foreach \y in {0,1} {\draw (0,\y) -- (.7,\y); \NC{.7}{\y}}
+    \node[pin,anchor=west] at (.9,1) {BAT open};
+    \node[pin,anchor=west] at (.9,0) {BUS open};
+    % J1 is a two-pole DC input, separate from the seven-pin host connector.
+    \draw[power] (14,-.8) -- (8.2,-.8) -- (8.2,0) -- (10,0);
+    \draw (14,-1.5) -- (1.5,-1.5) -- (1.5,-2.5);
+    \draw[black!55,densely dotted] (7.6,-1.85) rectangle (8.8,-.45);
+    \filldraw[fill=white] (8.2,-.8) circle (3pt);
+    \filldraw[fill=white] (8.2,-1.5) circle (3pt);
+    \node[pin,anchor=east] at (7.5,-.8) {+};
+    \node[pin,anchor=south east] at (7.5,-1.5) {--};
+    \node[note] at (5,-.65) {J1: DC input\\two poles};
+    \foreach \x in {4,6.5,9} {\draw (\x,-2.5) -- (\x,-2); \NC{\x}{-2}}
+    \draw[body] (14,-2.2) rectangle (21,1.2);
+    \node[title] at (17.5,.55) {Isolated AC--DC adapter};
+    \node[note] at (17.5,-.1) {floating, regulated 12 V DC\\enclosed external unit};
+    \node[pin,anchor=west] at (14,-.8) {DC+};
+    \node[pin,anchor=west] at (14,-1.5) {DC--};
+    \draw (21,.5) -- (22.5,.5);
+    \node[note,anchor=west] at (22.5,.5) {AC in};
+    \node[note] at (17.5,-3.2)
+      {Adapter outage stops monitoring.\\Missed charge cannot be reconstructed.\\No battery fallback.};
+  \fi
+
+  \node[note,align=left,anchor=north west] at (-2,-4.4)
+    {\textbf{Host interface:} 1 BAT\_F+, 2 BUS\_F+, 3 AUX+, 4 GND, 5 +3V3, 6 SDA, 7 SCL.\\
+     Cross = open inside M1. The host grounds and buses remain connected outside the module.\\
+     Isolate all sources before replacing M1; reboot afterwards. Never join the two battery supply inputs.};
+\end{scope}
+\begin{scope}[on background layer]
+  \node[fill=white,draw=black!18,fit=(diagram-content),inner sep=8pt] {};
+\end{scope}
+\end{tikzpicture}
+\end{document}

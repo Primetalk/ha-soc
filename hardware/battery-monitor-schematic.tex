@@ -85,7 +85,7 @@
   \node[font=\sffamily\Large\bfseries] at (9.5,10.35)
     {ESPHome high-side battery monitor};
   \node[note, text=black!65] at (9.5,9.85)
-    {Planned stabilization hardware --- electrical connections, not physical placement};
+    {Original single-INA219 layout --- electrical connections, not physical placement};
 
   % --------------------------------------------------------------------------
   % High-current path. Main current must never enter the INA219 breakout.
@@ -121,12 +121,16 @@
   \node[label text, anchor=west] at (19.6,3.85)
     {4S LiFePO$_4$ battery\\rated-capacity setting: 300 Ah};
   \node[note, anchor=west, text=WarningRed] at (19.6,2.95)
-    {independent battery BMS required\\(not shown)};
+    {independent battery BMS required\\low-side cutoff shown below};
   \node[label text, anchor=west] at (-1.8,-0.95)
-    {battery/common negative bus};
-  \draw (17.6,-0.6) node[ground] {};
-  \node[note, anchor=east] at (17.25,-1.05)
-    {all GND symbols share this common negative};
+    {BMS-protected negative bus / P-};
+  \node[module body, minimum width=3.0cm, minimum height=0.7cm] at (14.0,-0.6) {};
+  \node[note] at (14.0,-0.6) {BMS low-side cutoff};
+  \node[port label, anchor=south] at (15.75,-0.6) {B-};
+  \node[port label, anchor=south] at (12.25,-0.6) {P-};
+  \draw (10.5,-0.6) node[ground] {};
+  \node[note, anchor=west] at (10.8,-1.12)
+    {all GND symbols share protected BMS P-};
 
   % --------------------------------------------------------------------------
   % Fused, dedicated Kelvin leads from the two external-shunt sense points.
@@ -288,8 +292,8 @@
   \draw[scl] (9.1,-2.15) -- (10.3,-2.15);
   \node[note, anchor=west] at (10.5,-2.06)
     {I\textsuperscript{2}C cable: SDA + SCL (2 nets)};
-  \draw[logic power] (14.0,-1.95) -- (15.2,-1.95);
-  \node[note, anchor=west] at (15.4,-1.95) {low-voltage power};
+  \draw[logic power] (16.0,-1.95) -- (17.2,-1.95);
+  \node[note, anchor=west] at (17.4,-1.95) {low-voltage power};
 
   \end{scope}
 

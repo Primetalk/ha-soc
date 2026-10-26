@@ -74,6 +74,13 @@ SCHEMATIC_PAIRS = (
     ),
 )
 
+SCHEMATIC_PAIRS += tuple(
+    (f"hardware/battery-monitor-{variant}.tex", f"hardware/battery-monitor-{variant}.svg")
+    for variant in ("overview", "ina219", "bypass", "external")
+)
+REQUIRED_PATHS.update(path for pair in SCHEMATIC_PAIRS for path in pair)
+REQUIRED_PATHS.add("hardware/battery-monitor-modular.tex")
+
 EXPECTED_DETAILED_MODULE_PORTS = {
     "ina-vin-plus",
     "ina-vin-minus",
@@ -372,7 +379,8 @@ def check_renderer_tooling(checks: Checks) -> None:
     renderer = ROOT / "scripts/render-schematic.sh"
     if renderer.is_file():
         renderer_text = renderer.read_text(encoding="utf-8")
-        for stem in ("battery-monitor-schematic", "battery-system-installation"):
+        for source_path, _ in SCHEMATIC_PAIRS:
+            stem = Path(source_path).stem
             checks.require(
                 f'"{stem}"' in renderer_text,
                 f"canonical renderer does not include schematic stem: {stem}",
@@ -545,6 +553,8 @@ def check_rendered_schematics(checks: Checks) -> None:
         svg = ROOT / svg_path
         if source.is_file():
             source_text = source.read_text(encoding="utf-8")
+            if r"\input{hardware/battery-monitor-modular.tex}" in source_text:
+                source_text += read_text("hardware/battery-monitor-modular.tex")
             checks.require(
                 "fill=white" in source_text and "fit=(diagram-content)" in source_text,
                 f"schematic source lacks its fitted opaque canvas: {source_path}",

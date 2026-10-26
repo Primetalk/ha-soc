@@ -2,17 +2,17 @@ version: "3"
 
 tasks:
   schematic:
-    desc: Render and update both committed hardware schematic SVGs
+    desc: Render and update all committed hardware schematic SVGs
     cmds:
       - ./scripts/render-schematic.sh
 
   schematic:check:
-    desc: Verify that both committed hardware schematic SVGs are current
+    desc: Verify that all committed hardware schematic SVGs are current
     cmds:
       - ./scripts/render-schematic.sh --check
 
   schematic:preview:
-    desc: Render both schematics and create macOS Quick Look PNG previews
+    desc: Render all schematics and create macOS Quick Look PNG previews
     cmds:
       - ./scripts/preview-schematics.sh
 
@@ -33,6 +33,12 @@ tasks:
         "${CXX:-c++}" -std=c++17 -Wall -Wextra -Wpedantic -Werror -I.
         tests/battery_monitor_helpers_test.cpp -o "{{.TEST_BINARY}}"
       - '"{{.TEST_BINARY}}"'
+
+  test:optional-ina219:
+    desc: Test the optional adapter with the installed ESPHome INA219 driver
+    cmds:
+      - '"${ESPHOME_PYTHON:-python3}" tests/optional_ina219_test.py'
+      - '"${ESPHOME_PYTHON:-python3}" tests/measurement_pipeline_test.py'
 
   check:
     desc: Run repository validation, helper tests, and schematic freshness checks
