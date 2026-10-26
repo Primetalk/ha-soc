@@ -244,11 +244,12 @@ Before battery connection, record and verify at least these items:
 - [ ] `K_BUS` reaches only the bus-side shunt tap through `F1`.
 - [ ] `K_BAT` reaches only the battery-side shunt tap through `F2`.
 - [ ] Neither Kelvin lead carries supply or load current.
-- [ ] `F1`, `F2`, `F3`, and `F_MAIN` have documented current, time-current, DC
+- [ ] `F1`, `F2`, `F_MAIN`, and supply fuses (`F3` or fitted `F_A` / `F_B`)
+      have documented current, time-current, DC
       voltage, DC interrupt, holder, conductor, and environmental ratings.
 - [ ] The main onboard breakout shunt is isolated by a documented method.
 - [ ] If fitted, the optional `0x41` board retains its verified onboard resistor,
-      has a battery-side independently fused `F3` feed, supplies both DC/DC input
+      has a battery-side independently fused `F_A` feed, supplies both DC/DC input
       and the external `AUX+` terminal from `VIN-`, and returns only to BMS `P-`.
 - [ ] Both INA219 VCC pins receive regulated 3.3 V, never battery voltage.
 - [ ] De-energized resistance/continuity measurements confirm no unwanted bridge
@@ -269,8 +270,9 @@ wiring list alone does not establish measurement accuracy or operational safety.
 The editable
 [`../hardware/battery-monitor-schematic.tex`](../hardware/battery-monitor-schematic.tex)
 is the source of truth. The committed SVG is provided for documentation viewers.
-The upper panel shows the original single-sensor layout; the separate lower
-panel shows the alternative auxiliary branch and external low-consumption output.
+This drawing shows the original single-sensor layout. The
+[replaceable supply-module guide](optional-ina219.md) provides separate SVGs for
+the INA219, wire-only and external-adapter variants, with a common module interface.
 The schematic separates high-current, Kelvin-sense, logic-power, ground, SDA, and
 SCL nets; it is not a PCB, enclosure, cable-sizing, or physical-placement drawing.
 

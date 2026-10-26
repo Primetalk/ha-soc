@@ -8,6 +8,9 @@ readonly PREVIEW_DIR="build/schematic-preview"
 readonly -a SCHEMATIC_STEMS=(
   "battery-monitor-schematic"
   "battery-system-installation"
+  "battery-monitor-ina219"
+  "battery-monitor-bypass"
+  "battery-monitor-external"
 )
 
 die() {

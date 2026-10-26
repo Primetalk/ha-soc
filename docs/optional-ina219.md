@@ -6,14 +6,95 @@ its original onboard resistor. This improves measurement of monitor consumption
 and other small loads that are difficult to resolve with the large main shunt.
 It does not improve the main shunt's accuracy or provide branch protection.
 
-The same firmware supports both layouts. It probes the optional address once at
-boot. If absent, it uses the original main-only measurement. If detected, it
-subtracts auxiliary consumption from normalized main current. A detected board
+The same firmware supports all three supply variants below. It probes the
+optional address once at boot. If absent, it uses the original main-only measurement. If detected, it
+adds the two signed branch currents. The main channel is positive for charge,
+whereas the auxiliary channel is positive for consumption, so the conversion
+is `I_battery = I_main + (-I_aux_consumption)`. A detected board
 that later stops providing fresh data makes combined measurements unavailable
 until recovery. Restart re-detects the boards; addition/removal requires isolated
 power and a restart. Missing-at-boot fallback cannot distinguish an intentional
 single-board build from a failed or misaddressed auxiliary board. Check the
 selected mode against the actual wiring during commissioning.
+
+## Three interchangeable supply modules
+
+The new drawings retain the original orientation: charger/load bus on the left,
+external shunt prominently above the main INA219, controller and OLED beside it,
+and battery on the right. Each variant is a **separate SVG**, generated from
+[one shared CircuitikZ source](../hardware/battery-monitor-modular.tex). Matching
+net names in a drawing denote physical wires connected together. Crosses mark
+pins that are open **inside** the replaceable module.
+
+| Module M1 | Source connected to AUX+ | Current accounting |
+| --- | --- | --- |
+| A: INA219 | Fused battery-side tap through onboard 0.1 ohm shunt | Main signed current plus signed auxiliary current |
+| B: plain wires | Fused bus-side tap through a wire link | Main shunt already includes all battery-fed AUX loads |
+| C: external adapter | Isolated external adapter DC output | Main only; independent adapter does not draw operating power from this battery |
+
+### A. Measured auxiliary branch
+
+[![INA219 supply module and complete monitor wiring](../hardware/battery-monitor-ina219.svg)](../hardware/battery-monitor-ina219.svg)
+
+### B. Wire-only replacement
+
+[![Wire-only supply module and complete monitor wiring](../hardware/battery-monitor-bypass.svg)](../hardware/battery-monitor-bypass.svg)
+
+### C. External AC–DC adapter
+
+[![External adapter module and complete monitor wiring](../hardware/battery-monitor-external.svg)](../hardware/battery-monitor-external.svg)
+
+### Common module interface
+
+Use the same host-side connections and pin positions for all three modules.
+These logical pin numbers are a wiring specification, not a validated connector
+part or PCB footprint. Choose a keyed connector and ratings suitable for the
+branch; swap only with all sources isolated, then reboot the monitor.
+
+| Pin | Host connection | INA219 module A | Wire module B | Adapter module C |
+| --- | --- | --- | --- | --- |
+| 1 | `BAT_F+`, battery-side tap via independent fuse `F_A` | VIN+ | Open | Open |
+| 2 | `BUS_F+`, bus-side tap via independent fuse `F_B` | Open | Wire to pin 3 | Open |
+| 3 | `AUX+`, DC/DC input and external low-current output | VIN− | Wire from pin 2 | Adapter DC+ (`EXT+`) |
+| 4 | Protected BMS P− / GND | INA219 GND | Open inside module | Adapter DC− (`EXT−`) |
+| 5 | Regulated +3V3 from DC/DC | INA219 VCC | Open | Open |
+| 6 | Shared SDA | INA219 SDA | Open | Open |
+| 7 | Shared SCL | INA219 SCL | Open | Open |
+
+The DC/DC and all host grounds remain connected outside M1. In particular,
+module B does not interrupt the DC/DC return when pin 4 is unused inside it.
+Module A's pin 5 supply comes from the DC/DC downstream of pin 3; the onboard
+shunt conducts independently of logic power, allowing startup.
+
+**Never join pins 1 and 2.** They are on opposite sides of the main measurement
+path. A wire from pin 1 to pin 3 would bypass main current measurement without a
+second sensor. Module B therefore links **pin 2 to pin 3**. Its entire internals
+are that wire, with all other pins open. Module C leaves both battery feeds open;
+connect its adapter to the module's DC input jack, never directly to a battery
+feed or the 3.3 V logic rail. This arrangement selects a source by replacing M1;
+it does not provide automatic source switching or hot swapping.
+
+`F_A` and `F_B` protect separate supply leads at their source taps. The original
+single-layout drawing calls its bus-side supply fuse `F3`; `F_B` serves that role
+in the modular drawing. A fixed build may omit an unused source lead and fuse;
+fit both independently protected leads when all modules must be interchangeable.
+Neither feed may use the Kelvin leads or their `F1/F2` fuses.
+
+For module C, use a suitably rated **isolated AC–DC adapter with a floating,
+regulated nominal 12 V output** compatible with the DC/DC input and external AUX
+loads. The adapter is a complete enclosed unit; mains wiring is outside this
+monitor schematic. Bond its DC− to protected P− as shown. Check that USB,
+earth-referenced equipment and other consumer connections do not bypass the BMS.
+An adapter powered by this battery's inverter still draws battery power through
+the inverter/main branch; it does not remove that load from the battery. The
+independent-source option removes the monitor's operating load; small INA219
+measurement-input currents can remain.
+
+**If the adapter loses power, SOC monitoring stops.** Firmware cannot reconstruct
+charge used while it was off. Use an independent supply that remains available
+through the intended outage if continuous SOC accounting is required. No battery
+fallback is implemented by module C. Its AUX output follows the adapter voltage
+and availability, so verify the external consumers tolerate that behavior.
 
 ## Connect the auxiliary branch
 
@@ -24,7 +105,7 @@ Use this alternative to the original bus-side monitor supply:
 battery B+ ──┬── external 500 A / 75 mV shunt ── F_MAIN ── DC+ bus
              │       main INA219 0x40: fused Kelvin leads only
              │
-             └── F3 ── VIN+ [aux INA219, onboard 0.1 ohm] VIN- ── V_AUX+
+             └── F_A ── VIN+ [aux INA219, onboard 0.1 ohm] VIN- ── V_AUX+
                      battery-side fused branch                       ├── DC/DC battery input
                                                                      └── external AUX+ terminal
 
@@ -37,9 +118,9 @@ battery B- ─────────────────── BMS B- only
    leads unchanged. The main INA219 stays at `0x40` with its onboard resistor
    electrically isolated.
 2. Take a **separate power connection** from battery positive on the battery
-   side of the main shunt. Fit independent branch fuse `F3` close to that tap;
+   side of the main shunt. Fit independent branch fuse `F_A` close to that tap;
    never draw supply current through `K_BAT`, `K_BUS`, `F1`, or `F2`.
-3. Feed auxiliary `VIN+` through `F3`. Retain the auxiliary board's onboard
+3. Feed auxiliary `VIN+` through `F_A`. Retain the auxiliary board's onboard
    resistor and verify it is `0.1 ohm` (often marked `R100`) for the default
    resistance setting. A different marking/revision requires verified data and
    matching configuration.
@@ -63,10 +144,11 @@ its small onboard resistor end-to-end across the external shunt's terminals:
 that would be an unintended high-current bypass. Do not put the 500 A main load
 through the auxiliary breakout.
 
-The detailed and installation schematics show the original layout above and
-this alternative in separate lower panels:
-
-[![Single and dual INA219 monitor wiring](../hardware/battery-monitor-schematic.svg)](../hardware/battery-monitor-schematic.svg)
+The [original monitor schematic](../hardware/battery-monitor-schematic.svg) and
+[whole-system installation overview](../hardware/battery-system-installation.svg)
+retain their original single-sensor supply arrangement. The separate module-A
+drawing above shows the new arrangement; do not combine its power feed with the
+original bus-side DC/DC feed.
 
 ## Shared I2C and address selection
 
@@ -98,7 +180,7 @@ and current range `3.2 A`, configurable in
 [`battery-config.yaml`](../packages/battery-config.yaml). The range is a sensor
 setting, not a safe continuous board rating. Verify resistor wattage, thermal
 rise, PCB traces, terminal ratings, external leads, DC/DC inrush, and external
-consumer startup. Choose `F3` and any smaller downstream fuses from the lowest
+consumer startup. Choose `F_A` and any smaller downstream fuses from the lowest
 hardware limit and actual fuse clearing behavior; see
 [`fuse-selection.md`](fuse-selection.md).
 
@@ -113,10 +195,18 @@ Auxiliary `VIN+` to `VIN-` consumption is positive on its raw channel. Published
 battery current and signed power retain the project's positive-charge convention:
 
 ```text
-I_battery = I_main_normalized - I_aux_consumption
-I_main = 0 A, I_aux = +0.060 A -> I_battery = -0.060 A
+I_aux_signed = -I_aux_consumption
+I_battery = I_main_normalized + I_aux_signed
+
+Main discharge -2.000 A, auxiliary consumption +0.060 A -> battery -2.060 A
+Main charge   +2.000 A, auxiliary consumption +0.060 A -> battery +1.940 A
+Main idle      0.000 A, auxiliary consumption +0.060 A -> battery -0.060 A
 P_battery = V_battery * I_battery
 ```
+
+Thus the parallel branch discharge magnitudes add. Subtraction in the firmware
+is the sign conversion, not an assumption that the branches are in series. The
+existing positive-charge convention and `Auxiliary Current` entity are preserved.
 
 The same net current drives charge integration, SOC, current modes, display, and
 rule evaluation. A classification deadband does not remove small current from

@@ -140,6 +140,9 @@ in [`docs/wiring.md`](docs/wiring.md).
 
 [![Detailed high-side battery-monitor schematic](hardware/battery-monitor-schematic.svg)](hardware/battery-monitor-schematic.svg)
 
+Separate drawings for the [replaceable supply modules](docs/optional-ina219.md)
+cover an auxiliary INA219, a plain-wire replacement, and an independent AC–DC adapter.
+
 The drawing is an electrical schematic, not an approved cable, PCB, enclosure,
 fuse, physical-placement, or code-compliance design.
 

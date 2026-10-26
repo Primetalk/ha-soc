@@ -44,5 +44,8 @@ jobs:
           path: |
             hardware/battery-monitor-schematic.svg
             hardware/battery-system-installation.svg
+            hardware/battery-monitor-ina219.svg
+            hardware/battery-monitor-bypass.svg
+            hardware/battery-monitor-external.svg
           if-no-files-found: error
           retention-days: 30

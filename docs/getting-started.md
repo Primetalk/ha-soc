@@ -81,9 +81,11 @@ its de-energized checks before battery connection.
 Choose the original single-INA219 layout or the
 [optional dual-INA219 layout](optional-ina219.md). The same firmware detects
 the second board at boot; no separate firmware is required. In the dual layout
-the battery-side `F3` branch feeds the auxiliary sensor, then the DC/DC input and
+the battery-side `F_A` branch feeds the auxiliary sensor, then the DC/DC input and
 external low-consumption terminal. Both INA219 logic supplies remain regulated
-3.3 V. Change hardware only with power isolated and restart after changes.
+3.3 V. The same guide also covers a wire-only module and an independent
+AC–DC adapter module. Change hardware only with power isolated and restart
+after changes.
 
 Then review [`../packages/battery-config.yaml`](../packages/battery-config.yaml).
 The settings are split into two groups:

@@ -48,7 +48,7 @@ for the checks above:
 | ---------- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `F_MAIN`   | Main battery positive conductor, bus, and installation     | No repository default. Size from maximum continuous charge/load current, cable ampacity, surge duration, BMS/contactors, and installation rules. The 500 A shunt rating is **not** the fuse rating.                             | Select from the coordinated main-system time-current study.                                                            | At least the worst-case system voltage and prospective battery fault current; normally a high-interrupt battery fuse system.                                       |
 | `F1`, `F2` | The two thin INA219 Kelvin leads                           | `0.5 A` each is the preliminary target; `0.1–1 A` may be reasonable if the selected wire and high-interrupt fuse family require another value. INA219 input current is tiny, so wire protection and breaking capacity dominate. | Fast-acting is normally preferred because there is no intentional inrush, subject to the selected part's actual curve. | At least the worst-case system voltage and the prospective fault current at each energized shunt tap. Both fuses and holders need an explicit DC interrupt rating. |
-| `F3`       | Thin nominal `+12 V` input lead and protected DC/DC supply | `1 A` time-delay is the preliminary target for the planned ESP32-C3, INA219, and OLED monitor. Recalculate from the actual converter/rail and reduce it when a smaller rating survives measured startup.                        | Time-delay is often useful for converter input-capacitor inrush; verify with the selected converter and curve.         | At least the worst-case system voltage and prospective fault current at the selected bus-side or battery-side tap. Protect all downstream branch hardware and wiring.                |
+| `F3` / `F_A` / `F_B` | Thin nominal `+12 V` input lead and protected DC/DC supply | `1 A` time-delay is the preliminary target for the planned ESP32-C3, INA219, and OLED monitor. Recalculate from the actual converter/rail and reduce it when a smaller rating survives measured startup.                        | Time-delay is often useful for converter input-capacitor inrush; verify with the selected converter and curve.         | At least the worst-case system voltage and prospective fault current at the selected bus-side or battery-side tap. Protect all downstream branch hardware and wiring.                |
 
 The capacity label `300 Ah` describes stored charge, not safe fault current. The
 shunt label `500 A / 75 mV` describes its measurement range, not the cable or
@@ -75,18 +75,28 @@ A low ampere rating does **not** make a miniature fuse safe on a battery tap.
 For example, a `0.5 A` fuse with a `35 A` interrupt rating is unsuitable where
 the prospective short-circuit current is `5 kA`.
 
-## `F3`: monitor-supply or auxiliary-branch input protection
+## Supply input protection: `F3` or modular `F_A` / `F_B`
 
 In the original single-sensor layout, `F3` protects the bus-side input lead to
 the DC/DC supply and its input. Monitor consumption then crosses the main shunt.
 
-In the [optional dual-sensor layout](optional-ina219.md), move `F3` to the
-battery-side branch tap, close to that source. It protects the complete branch:
+In the [optional dual-sensor layout](optional-ina219.md), the new `F_A` supply
+fuse is at the battery-side branch tap, close to that source. It protects the complete branch:
 auxiliary INA219 onboard resistor and PCB, DC/DC input, external `AUX+` terminal,
 and all branch conductors. The main fuse stays unchanged; a fuse on the main bus
 does not protect this separate battery-side branch. Do not use `F1` or `F2` as
 branch supply fuses. `1 A` in the table is only a single-monitor starting point;
 recalculate it for the actual branch, including the external consumer.
+
+The interchangeable-module host also has a separate bus-side feed protected by
+`F_B` (the role of `F3` in the original drawing). Module A uses `F_A`; the
+wire-only module B uses `F_B`. Module C leaves both inputs open and uses the
+independent adapter. Each fitted lead needs its own source fuse even when its
+module pin is open. Never parallel these feeds. For a fixed build, an unused
+feed and its fuse may be omitted. Apply the branch-rating checks independently
+to `F_A` and `F_B`, and record both selections in the acceptance table below.
+For module C, verify adapter fault-current protection and add downstream DC
+protection where needed for the AUX wiring and connector ratings.
 
 Estimate worst-case converter input current using:
 
@@ -140,26 +150,28 @@ permission for a long unfused battery cable.
 
 ## Selection and commissioning record
 
-Complete this table with manufacturer datasheets before energizing the battery:
+Complete this table with manufacturer datasheets before energizing the battery.
+Use `F3` for the original layout or separate `F_A` / `F_B` columns for each
+fitted modular supply lead; mark omitted leads as not fitted:
 
-| Field                                    | `F_MAIN` | `F1` | `F2` | `F3` |
-| ---------------------------------------- | -------- | ---- | ---- | ---- |
-| Manufacturer and part number             |          |      |      |      |
-| Fuse technology / speed                  |          |      |      |      |
-| Nominal current                          |          |      |      |      |
-| DC voltage rating                        |          |      |      |      |
-| DC interrupt rating                      |          |      |      |      |
-| Holder part number and ratings           |          |      |      |      |
-| Protected wire gauge/type/temp rating    |          |      |      |      |
-| Derated wire ampacity                    |          |      |      |      |
-| Expected continuous current (all AUX loads for F3) |          |      |      |      |
-| Maximum valid surge and duration         |          |      |      |      |
-| Fuse clearing time at wire fault current |          |      |      |      |
-| Prospective short-circuit current at tap |          |      |      |      |
-| Installation location / unfused length   |          |      |      |      |
-| Design-review reference and approval     |          |      |      |      |
+| Field                                    | `F_MAIN` | `F1` | `F2` | `F3` | `F_A` | `F_B` |
+| ---------------------------------------- | -------- | ---- | ---- | ---- | ---- | ---- |
+| Manufacturer and part number             |          |      |      |      |      |      |
+| Fuse technology / speed                  |          |      |      |      |      |      |
+| Nominal current                          |          |      |      |      |      |      |
+| DC voltage rating                        |          |      |      |      |      |      |
+| DC interrupt rating                      |          |      |      |      |      |      |
+| Holder part number and ratings           |          |      |      |      |      |      |
+| Protected wire gauge/type/temp rating    |          |      |      |      |      |      |
+| Derated wire ampacity                    |          |      |      |      |      |      |
+| Expected continuous current (all AUX loads for supply fuses) |          |      |      |      |      |      |
+| Maximum valid surge and duration         |          |      |      |      |      |      |
+| Fuse clearing time at wire fault current |          |      |      |      |      |      |
+| Prospective short-circuit current at tap |          |      |      |      |      |      |
+| Installation location / unfused length   |          |      |      |      |      |      |
+| Design-review reference and approval     |          |      |      |      |      |      |
 
 During commissioning, verify no holder or lead heats in normal operation, the
-DC/DC supply survives repeated cold starts without nuisance opening `F3`, both
+DC/DC supply survives repeated cold starts without nuisance opening the selected supply fuse, both
 Kelvin paths have continuity, and current/voltage readings remain correct. Do
 not intentionally short a production battery to test interrupt performance.

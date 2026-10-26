@@ -10,7 +10,8 @@ instruments, tolerances, and pass/fail decisions.
 > recorded. Do not enable real charger/load control until every applicable
 > monitor and control-path acceptance item passes.
 
-Select and record `F_MAIN`, `F1`, `F2`, and `F3` using the separate
+Select and record `F_MAIN`, `F1`, `F2`, and the supply fuses (`F3` or fitted
+`F_A` / `F_B`) using the separate
 [fuse-selection guide](fuse-selection.md) before energizing the installation.
 
 ## Safety prerequisites
@@ -79,7 +80,7 @@ tolerance after seeing the result.
       protected sense lead.
 - [ ] Each Kelvin lead is fused near the energized shunt tap with a device that
       protects the wire and has a suitable DC interrupt capability.
-- [ ] `F1`, `F2`, `F3`, and `F_MAIN` selections record nominal current,
+- [ ] `F1`, `F2`, `F_MAIN`, and supply fuse selections record nominal current,
       time-current behavior, DC voltage rating, DC interrupt rating, holder
       rating, protected-wire ampacity, prospective fault current, and maximum
       unfused length as required by the
@@ -100,9 +101,18 @@ tolerance after seeing the result.
       connector, and insulation ratings.
 - [ ] If fitted, the optional board retains its verified `0.1 ohm` resistor,
       is addressed `0x41`, and is not connected across the external main shunt.
-- [ ] In the dual layout, battery-side `F3` feeds aux `VIN+`; aux `VIN-` feeds
+- [ ] In the dual layout, battery-side `F_A` feeds aux `VIN+`; aux `VIN-` feeds
       DC/DC battery-voltage input and the external `AUX+` output. There is no
       additional bus-side DC/DC supply feed.
+- [ ] For modular wiring, the selected M1 matches the
+      [common pin table](optional-ina219.md#common-module-interface). Pins 1 and 2
+      are never joined. Each fitted battery supply lead has its own source fuse.
+- [ ] Wire-only M1 connects pin 2 (bus side) to pin 3, leaving pin 1 open.
+      Main current includes the monitor and external AUX loads.
+- [ ] External-adapter M1 leaves pins 1 and 2 open. Adapter DC+ feeds AUX+;
+      isolated adapter DC− connects to protected P−. Its voltage, ratings and
+      outage availability match the DC/DC, AUX consumers and monitoring needs.
+- [ ] M1 is changed only with every source isolated, followed by a reboot.
 - [ ] Both INA219 VCC pins are on the regulated 3.3 V rail.
 - [ ] Auxiliary branch continuous current, inrush, resistor dissipation, PCB,
       connectors, conductors, and fuse clearing behavior meet recorded limits.

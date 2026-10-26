@@ -94,12 +94,17 @@ In the dual layout, each main-shunt callback combines that sample with the most
 recent fresh auxiliary sample:
 
 ```text
-battery_current_A = normalized_main_current_A - auxiliary_consumption_A
+signed_auxiliary_current_A = -auxiliary_consumption_A
+battery_current_A = normalized_main_current_A + signed_auxiliary_current_A
 battery_power_W = battery_voltage_V * battery_current_A
 ```
 
 The branch is supplied from the battery side of the main shunt. Auxiliary VIN+
-faces the battery, so its positive current means consumption. Negative auxiliary
+faces the battery, so its positive current means consumption. The two parallel
+branch currents add after putting both in the positive-charge convention. The
+wire-only module instead uses the bus-side feed, already measured by the main
+shunt. The independent adapter module leaves both battery supply feeds open;
+without the auxiliary INA219 both modules use main-only accounting. Negative auxiliary
 measurements retain their sign. The main sensor remains necessary even when it
 reads zero: the auxiliary sensor cannot account for unknown main-branch current.
 Samples are not simultaneous; at the default cadence the auxiliary value normally
