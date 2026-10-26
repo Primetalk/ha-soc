@@ -19,12 +19,23 @@ selected mode against the actual wiring during commissioning.
 
 ## Three interchangeable supply modules
 
-The new drawings retain the original orientation: charger/load bus on the left,
-external shunt prominently above the main INA219, controller and OLED beside it,
-and battery on the right. Each variant is a **separate SVG**, generated from
-[one shared CircuitikZ source](../hardware/battery-monitor-modular.tex). Matching
-net names in a drawing denote physical wires connected together. Crosses mark
-pins that are open **inside** the replaceable module.
+Start with the **common wiring overview**. M1 sits beside the DC/DC supply;
+its AUX+ output feeds the converter and the external low-consumption terminals.
+The charger/load bus is on the left, the main shunt above its INA219, and the
+battery on the right. Continuous +3V3, SDA and SCL lines connect the modules.
+Dots mark connections; small bridges mark crossings without a connection.
+
+[![Common wiring overview with inline M1 and shared power and I2C buses](../hardware/battery-monitor-overview.svg)](../hardware/battery-monitor-overview.svg)
+
+Then choose one of the three **module-detail SVGs** below. Each shows the same
+M1 outline and numbered pins; the host wiring remains as shown in the overview.
+Crosses mark pins open **inside** M1. The external-input variant shows the J1 DC
+connector as two poles and the external adapter connected to it.
+
+The [overview source](../hardware/battery-monitor-overview.tex) owns the host
+layout; [one shared module source](../hardware/battery-monitor-modular.tex)
+generates the three detail drawings. Matching net names denote physical wires
+connected together.
 
 | Module M1 | Source connected to AUX+ | Current accounting |
 | --- | --- | --- |
@@ -34,21 +45,22 @@ pins that are open **inside** the replaceable module.
 
 ### A. Measured auxiliary branch
 
-[![INA219 supply module and complete monitor wiring](../hardware/battery-monitor-ina219.svg)](../hardware/battery-monitor-ina219.svg)
+[![M1-A detail: INA219 supply module](../hardware/battery-monitor-ina219.svg)](../hardware/battery-monitor-ina219.svg)
 
 ### B. Wire-only replacement
 
-[![Wire-only supply module and complete monitor wiring](../hardware/battery-monitor-bypass.svg)](../hardware/battery-monitor-bypass.svg)
+[![M1-B detail: wire-only supply module](../hardware/battery-monitor-bypass.svg)](../hardware/battery-monitor-bypass.svg)
 
 ### C. External AC–DC adapter
 
-[![External adapter module and complete monitor wiring](../hardware/battery-monitor-external.svg)](../hardware/battery-monitor-external.svg)
+[![M1-C detail: DC input connector and external adapter](../hardware/battery-monitor-external.svg)](../hardware/battery-monitor-external.svg)
 
 ### Common module interface
 
 Use the same host-side connections and pin positions for all three modules.
 These logical pin numbers are a wiring specification, not a validated connector
-part or PCB footprint. Choose a keyed connector and ratings suitable for the
+part or PCB footprint. J1 similarly specifies two DC poles and polarity, without selecting a
+barrel size or connector part. Choose keyed connectors and ratings suitable for the
 branch; swap only with all sources isolated, then reboot the monitor.
 
 | Pin | Host connection | INA219 module A | Wire module B | Adapter module C |
@@ -70,7 +82,7 @@ shunt conducts independently of logic power, allowing startup.
 path. A wire from pin 1 to pin 3 would bypass main current measurement without a
 second sensor. Module B therefore links **pin 2 to pin 3**. Its entire internals
 are that wire, with all other pins open. Module C leaves both battery feeds open;
-connect its adapter to the module's DC input jack, never directly to a battery
+connect its adapter to the module's J1 DC input connector, never directly to a battery
 feed or the 3.3 V logic rail. This arrangement selects a source by replacing M1;
 it does not provide automatic source switching or hot swapping.
 
@@ -146,8 +158,8 @@ through the auxiliary breakout.
 
 The [original monitor schematic](../hardware/battery-monitor-schematic.svg) and
 [whole-system installation overview](../hardware/battery-system-installation.svg)
-retain their original single-sensor supply arrangement. The separate module-A
-drawing above shows the new arrangement; do not combine its power feed with the
+retain their original single-sensor supply arrangement. The common overview and module-A
+detail above show the new arrangement; do not combine its power feed with the
 original bus-side DC/DC feed.
 
 ## Shared I2C and address selection

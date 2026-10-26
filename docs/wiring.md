@@ -271,8 +271,10 @@ The editable
 [`../hardware/battery-monitor-schematic.tex`](../hardware/battery-monitor-schematic.tex)
 is the source of truth. The committed SVG is provided for documentation viewers.
 This drawing shows the original single-sensor layout. The
-[replaceable supply-module guide](optional-ina219.md) provides separate SVGs for
-the INA219, wire-only and external-adapter variants, with a common module interface.
+[replaceable supply-module guide](optional-ina219.md) provides a
+[common wiring overview](../hardware/battery-monitor-overview.svg) with inline M1
+and shared power/I2C buses, plus separate details for the INA219, wire-only and
+external-adapter modules. All three use the same numbered interface.
 The schematic separates high-current, Kelvin-sense, logic-power, ground, SDA, and
 SCL nets; it is not a PCB, enclosure, cable-sizing, or physical-placement drawing.
 

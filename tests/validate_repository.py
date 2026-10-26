@@ -76,7 +76,7 @@ SCHEMATIC_PAIRS = (
 
 SCHEMATIC_PAIRS += tuple(
     (f"hardware/battery-monitor-{variant}.tex", f"hardware/battery-monitor-{variant}.svg")
-    for variant in ("ina219", "bypass", "external")
+    for variant in ("overview", "ina219", "bypass", "external")
 )
 REQUIRED_PATHS.update(path for pair in SCHEMATIC_PAIRS for path in pair)
 REQUIRED_PATHS.add("hardware/battery-monitor-modular.tex")

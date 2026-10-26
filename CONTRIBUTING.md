@@ -144,14 +144,19 @@ The editable CircuitikZ entry points and their generated artifacts are:
 | -------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
 | [`hardware/battery-monitor-schematic.tex`](hardware/battery-monitor-schematic.tex)     | [`hardware/battery-monitor-schematic.svg`](hardware/battery-monitor-schematic.svg)     | Detailed SOC-monitor wiring                                  |
 | [`hardware/battery-system-installation.tex`](hardware/battery-system-installation.tex) | [`hardware/battery-system-installation.svg`](hardware/battery-system-installation.svg) | Conceptual battery, BMS, charger, inverter, and ATS overview |
+| [`hardware/battery-monitor-overview.tex`](hardware/battery-monitor-overview.tex) | [`hardware/battery-monitor-overview.svg`](hardware/battery-monitor-overview.svg) | Common host wiring with inline M1 and shared buses |
 | [`hardware/battery-monitor-ina219.tex`](hardware/battery-monitor-ina219.tex) | [`hardware/battery-monitor-ina219.svg`](hardware/battery-monitor-ina219.svg) | Replaceable INA219 module |
 | [`hardware/battery-monitor-bypass.tex`](hardware/battery-monitor-bypass.tex) | [`hardware/battery-monitor-bypass.svg`](hardware/battery-monitor-bypass.svg) | Wire-only replacement module |
 | [`hardware/battery-monitor-external.tex`](hardware/battery-monitor-external.tex) | [`hardware/battery-monitor-external.svg`](hardware/battery-monitor-external.svg) | Independent AC–DC adapter module |
 
 The three module entry points select a variant in
 [`hardware/battery-monitor-modular.tex`](hardware/battery-monitor-modular.tex).
-Edit that shared source to keep geometry and connector pins aligned; render the
-entry points with the script below rather than compiling the shared file alone.
+Edit that shared source for module internals, keeping all three outlines and
+connector positions aligned. Host placement and bus routing belong in
+`battery-monitor-overview.tex`. Preserve matching M1 pin numbers between the
+overview, detail drawings and the interface table in `docs/optional-ina219.md`.
+Render the entry points with the script below rather than compiling the shared
+module source alone.
 
 All SVGs are committed so documentation consumers do not need a TeX
 installation.
