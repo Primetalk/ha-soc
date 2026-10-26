@@ -34,6 +34,12 @@ tasks:
         tests/battery_monitor_helpers_test.cpp -o "{{.TEST_BINARY}}"
       - '"{{.TEST_BINARY}}"'
 
+  test:optional-ina219:
+    desc: Test the optional adapter with the installed ESPHome INA219 driver
+    cmds:
+      - '"${ESPHOME_PYTHON:-python3}" tests/optional_ina219_test.py'
+      - '"${ESPHOME_PYTHON:-python3}" tests/measurement_pipeline_test.py'
+
   check:
     desc: Run repository validation, helper tests, and schematic freshness checks
     deps:

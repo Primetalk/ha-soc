@@ -54,6 +54,11 @@ rule evaluation, and display updates continue at their existing rates.
 
 ## Rewire the controller connections
 
+The [optional second INA219](optional-ina219.md) is supported by the same ESP8266
+entry point. Connect its SDA/SCL to the D1 mini pins below, share regulated 3.3 V
+logic power, and set its address to `0x41`. Use the separate battery-side supply
+branch from that guide; detection requires no extra firmware profile.
+
 Connect both I2C modules in parallel to the following nets:
 
 | Signal | D1 mini / NodeMCU | INA219 | SSD1306 OLED |

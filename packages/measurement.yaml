@@ -5,7 +5,23 @@ i2c:
   frequency: ${i2c_frequency}
   scan: true
 
+# Reuse ESPHome's INA219 driver through a small optional-presence adapter.
+external_components:
+  - source:
+      type: local
+      path: components
+    components: [optional_ina219]
+
 globals:
+  - id: last_main_current_ms
+    type: uint32_t
+    restore_value: false
+    initial_value: "0"
+  - id: last_auxiliary_current_ms
+    type: uint32_t
+    restore_value: false
+    initial_value: "0"
+
   - id: last_measurement_ms
     type: uint32_t
     restore_value: false
@@ -63,6 +79,65 @@ esphome:
         - script.execute: checkpoint_energy_totals
 
 script:
+  - id: invalidate_combined_measurement
+    mode: restart
+    then:
+      - lambda: |-
+          battery_monitor::invalidate_sensor_state(id(battery_current));
+          battery_monitor::invalidate_sensor_state(id(battery_power));
+          id(last_measurement_ms) = 0;
+          id(last_integration_ms) = 0;
+          id(energy_has_baseline) = false;
+          id(reset_charge_detection).execute();
+          battery_monitor::current_direction_detector().reset();
+          id(battery_charging).invalidate_state();
+          id(battery_discharging).invalidate_state();
+          id(battery_idle).invalidate_state();
+      - script.execute: evaluate_soc_rules
+
+  - id: process_battery_measurement
+    mode: restart
+    parameters:
+      main_current_a: float
+    then:
+      - lambda: |-
+          const uint32_t now = millis();
+          const float current = battery_monitor::parallel_branch_current(
+              main_current_a, id(ina219_aux_monitor).is_present(),
+              id(auxiliary_current).state,
+              battery_monitor::sample_is_fresh(
+                  now, id(last_auxiliary_current_ms), ${measurement_stale_after_ms}));
+          if (!std::isfinite(current)) {
+            id(invalidate_combined_measurement).execute();
+            return;
+          }
+          id(last_measurement_ms) = now;
+          id(battery_current).publish_state(current);
+          if (!id(battery_voltage).has_state() ||
+              !std::isfinite(id(battery_voltage).state) ||
+              !battery_monitor::sample_is_fresh(
+                  now, id(last_voltage_ms), ${measurement_stale_after_ms})) {
+            battery_monitor::invalidate_sensor_state(id(battery_power));
+            id(energy_has_baseline) = false;
+          } else {
+            id(battery_power).publish_state(id(battery_voltage).state * current);
+          }
+          auto &direction = battery_monitor::current_direction_detector();
+          if (direction.update(now, current,
+              ${current_state_enter_amps}, ${current_state_exit_amps},
+              ${current_state_settle_ms}, ${measurement_stale_after_ms})) {
+            const auto state = direction.state();
+            id(battery_charging).publish_state(state == battery_monitor::CurrentDirection::Charging);
+            id(battery_discharging).publish_state(state == battery_monitor::CurrentDirection::Discharging);
+            id(battery_idle).publish_state(state == battery_monitor::CurrentDirection::Idle);
+          } else {
+            id(battery_charging).invalidate_state();
+            id(battery_discharging).invalidate_state();
+            id(battery_idle).invalidate_state();
+          }
+          id(integrate_soc_sample).execute(current);
+          id(evaluate_charge_detection).execute();
+
   - id: publish_energy_totals
     then:
       - lambda: |-
@@ -75,6 +150,31 @@ script:
               id(energy_charged_live), id(energy_discharged_live));
 
 sensor:
+  # Always configured: absence at boot selects the original single-shunt layout.
+  - platform: optional_ina219
+    id: ina219_aux_monitor
+    i2c_id: battery_i2c
+    address: ${aux_ina219_address}
+    shunt_resistance: ${aux_shunt_resistance}
+    max_current: ${aux_max_current}
+    max_voltage: ${ina219_max_bus_voltage}
+    update_interval: ${measurement_update_interval}
+    current:
+      name: Auxiliary Current
+      id: auxiliary_current
+      accuracy_decimals: 4
+      filters:
+        - lambda: |-
+            if (!std::isfinite(x)) {
+              id(last_auxiliary_current_ms) = 0;
+              battery_monitor::invalidate_sensor_state(id(auxiliary_current));
+              id(invalidate_combined_measurement).execute();
+              return {};
+            }
+            return x * ${aux_current_polarity_multiplier};
+      on_value:
+        - lambda: id(last_auxiliary_current_ms) = millis();
+
   - platform: template
     name: Battery Energy Charged
     id: battery_energy_charged
@@ -137,47 +237,15 @@ sensor:
       filters:
         - lambda: |-
             if (!std::isfinite(x)) {
-              id(reset_charge_detection).execute();
-              battery_monitor::current_direction_detector().reset();
-              id(battery_charging).invalidate_state();
-              id(battery_discharging).invalidate_state();
-              id(battery_idle).invalidate_state();
+              id(last_main_current_ms) = 0;
+              id(invalidate_combined_measurement).execute();
               return {};
             }
             return x;
       on_value:
-        then:
-          - lambda: id(last_measurement_ms) = millis();
-          - sensor.template.publish:
-              id: battery_current
-              state: !lambda return x * ${current_polarity_multiplier};
-          - lambda: |-
-              if (!id(battery_voltage).has_state() ||
-                  !std::isfinite(id(battery_voltage).state)) {
-                battery_monitor::invalidate_sensor_state(id(battery_power));
-                id(energy_has_baseline) = false;
-              } else {
-                id(battery_power).publish_state(
-                    id(battery_voltage).state * x * ${current_polarity_multiplier});
-              }
-          - lambda: |-
-              auto &direction = battery_monitor::current_direction_detector();
-              if (direction.update(millis(), x * ${current_polarity_multiplier},
-                  ${current_state_enter_amps}, ${current_state_exit_amps},
-                  ${current_state_settle_ms}, ${measurement_stale_after_ms})) {
-                const auto state = direction.state();
-                id(battery_charging).publish_state(state == battery_monitor::CurrentDirection::Charging);
-                id(battery_discharging).publish_state(state == battery_monitor::CurrentDirection::Discharging);
-                id(battery_idle).publish_state(state == battery_monitor::CurrentDirection::Idle);
-              } else {
-                id(battery_charging).invalidate_state();
-                id(battery_discharging).invalidate_state();
-                id(battery_idle).invalidate_state();
-              }
-          - script.execute:
-              id: integrate_soc_sample
-              current_a: !lambda return x * ${current_polarity_multiplier};
-          - script.execute: evaluate_charge_detection
+        - lambda: |-
+            id(last_main_current_ms) = millis();
+            id(process_battery_measurement).execute(x * ${current_polarity_multiplier});
 
     power:
       name: INA219 Raw Power
@@ -233,6 +301,22 @@ sensor:
 
 binary_sensor:
   - platform: template
+    name: Auxiliary INA219 Present
+    id: auxiliary_ina219_present
+    entity_category: diagnostic
+    lambda: return id(ina219_aux_monitor).is_present();
+
+  - platform: template
+    name: Auxiliary Measurement Healthy
+    id: auxiliary_measurement_healthy
+    entity_category: diagnostic
+    lambda: |-
+      return id(ina219_aux_monitor).is_present() &&
+             battery_monitor::sample_is_fresh(
+                 millis(), id(last_auxiliary_current_ms), ${measurement_stale_after_ms}) &&
+             id(auxiliary_current).has_state() && std::isfinite(id(auxiliary_current).state);
+
+  - platform: template
     name: Battery Charging
     id: battery_charging
     device_class: battery_charging
@@ -269,27 +353,25 @@ interval:
       - script.execute: publish_energy_totals
   - interval: 1s
     then:
-      - if:
-          condition:
-            lambda: |-
-              return id(last_measurement_ms) != 0 &&
-                     !battery_monitor::sample_is_fresh(
-                         millis(), id(last_measurement_ms), ${measurement_stale_after_ms}) &&
-                     (id(battery_current).has_state() || id(battery_voltage).has_state());
-          then:
-            # Do not leave stale values looking current in Home Assistant.
-            - lambda: |-
-                battery_monitor::invalidate_sensor_state(id(battery_voltage));
-                battery_monitor::invalidate_sensor_state(id(battery_current));
-                battery_monitor::invalidate_sensor_state(id(battery_power));
-                id(energy_has_baseline) = false;
-                battery_monitor::invalidate_sensor_state(id(ina219_current_raw));
-                battery_monitor::invalidate_sensor_state(id(ina219_power_raw));
-                battery_monitor::invalidate_sensor_state(id(ina219_shunt_voltage_raw));
-                battery_monitor::invalidate_sensor_state(id(shunt_voltage_mv));
-                battery_monitor::current_direction_detector().reset();
-                id(battery_charging).invalidate_state();
-                id(battery_discharging).invalidate_state();
-                id(battery_idle).invalidate_state();
-                ESP_LOGW("measurement", "INA219 measurements became stale");
-            - script.execute: evaluate_soc_rules
+      - lambda: |-
+          const uint32_t now = millis();
+          const bool main_stale = id(last_main_current_ms) != 0 &&
+              !battery_monitor::sample_is_fresh(
+                  now, id(last_main_current_ms), ${measurement_stale_after_ms});
+          const bool auxiliary_stale = id(ina219_aux_monitor).is_present() &&
+              !battery_monitor::sample_is_fresh(
+                  now, id(last_auxiliary_current_ms), ${measurement_stale_after_ms});
+          if (main_stale) {
+            battery_monitor::invalidate_sensor_state(id(battery_voltage));
+            id(last_voltage_ms) = 0;
+            battery_monitor::invalidate_sensor_state(id(ina219_current_raw));
+            battery_monitor::invalidate_sensor_state(id(ina219_power_raw));
+            battery_monitor::invalidate_sensor_state(id(ina219_shunt_voltage_raw));
+            battery_monitor::invalidate_sensor_state(id(shunt_voltage_mv));
+          }
+          if (auxiliary_stale)
+            battery_monitor::invalidate_sensor_state(id(auxiliary_current));
+          if ((main_stale || auxiliary_stale) && id(battery_current).has_state()) {
+            ESP_LOGW("measurement", "Required branch current became unavailable");
+            id(invalidate_combined_measurement).execute();
+          }

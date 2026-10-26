@@ -47,14 +47,15 @@ functioning:
   and disconnects; and
 - a protected DC/DC supply rated for the full battery range and transients.
 
-**Never route battery or load current through the INA219 breakout, ESP32-C3,
+**Never route main battery or high-current load current through the INA219 breakout, ESP32-C3,
 OLED, a PCB relay, or thin sense wire.** Main current flows only through the
 external shunt and installation-rated high-current components.
 
 The two Kelvin sense leads connect directly to the external-shunt sense points,
 are fused individually near those energized taps, and never carry monitor-supply
 current. The INA219 breakout's onboard differential shunt must be isolated using
-a method documented for the exact board revision.
+a method documented for the exact board revision. This applies to the main
+INA219; the optional auxiliary board retains its onboard resistor.
 
 A 300 Ah LiFePO4 battery can deliver destructive fault current. De-energize and
 isolate the battery before changing conductors. Use appropriately qualified help,
@@ -97,6 +98,12 @@ competence.
 Hardware and battery defaults are centralized in
 [`packages/battery-config.yaml`](packages/battery-config.yaml). Review that file
 before flashing a different installation.
+
+An optional second INA219 at `0x41` measures a separate fused low-current branch,
+including the monitor's DC/DC input and an external small-device output. The
+same firmware detects both hardware layouts at startup. See
+[`docs/optional-ina219.md`](docs/optional-ina219.md) for connections, address
+jumpers, supply ratings, and detection/failure behavior.
 
 The physical controller is an ESP32-C3 SuperMini. The generic board profile is
 used because common SuperMini variants generally lack a dedicated PlatformIO

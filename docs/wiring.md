@@ -22,9 +22,11 @@ Before connecting the monitor to a battery, provide independently functioning:
   strain relief, and disconnects; and
 - a protected DC/DC supply rated for the actual battery range and transients.
 
-**Never route battery or load current through the INA219 breakout, ESP32-C3,
-OLED, a PCB relay, or a thin sense wire.** Main current flows only through the
-external shunt and installation-rated high-current components.
+**Never route main battery or main load current through an INA219 breakout,
+ESP32-C3, OLED, a PCB relay, or a thin sense wire.** Main current flows only
+through the external shunt and installation-rated high-current components. Only
+the separately fused, limited auxiliary branch described below may pass through
+the optional second INA219 and its onboard resistor.
 
 A 300 Ah LiFePO4 battery can deliver destructive fault current. De-energize and
 isolate the battery before changing conductors. Verify absence of hazardous
@@ -35,7 +37,15 @@ Read [`fuse-selection.md`](fuse-selection.md) before choosing `F_MAIN`, `F1`,
 `F2`, `F3`, or their holders. A fuse's printed current alone does not establish a
 safe DC interrupt rating.
 
-## Monitor-only overview
+## Choose one of two layouts
+
+The same firmware detects the optional auxiliary INA219 at boot. The original
+single-sensor layout remains supported. Adding the second board requires moving
+the monitor supply into the battery-side auxiliary branch; follow the complete
+[optional-INA219 wiring guide](optional-ina219.md). Do not simply add its small
+resistor across the main shunt or keep a second bus-side supply feed.
+
+## Original single-sensor overview
 
 ```text
 BATTERY B+ ── external 500 A / 75 mV shunt ── F_MAIN ── protected DC+ bus
@@ -55,9 +65,10 @@ or an approved component layout. Install the main fuse and all branch protection
 as close to their energy source as the complete installation design requires,
 with unavoidable unfused lengths minimized and protected.
 
-## Four installation conductors
+## Original layout: four installation conductors
 
-Exactly four implemented conductors cross the SOC-monitor enclosure boundary:
+In the original layout, exactly four implemented conductors cross the
+SOC-monitor enclosure boundary:
 
 | Logical ID | Monitor terminal | Installation connection                      | Purpose                                                                     |
 | ---------- | ---------------- | -------------------------------------------- | --------------------------------------------------------------------------- |
@@ -132,9 +143,9 @@ An open `F1` or `F2`, damaged lead, or poor sense connection is a measurement
 fault. Stop relying on current, power, and SOC until both paths and the INA219
 readings have been checked safely.
 
-## Isolate the breakout's onboard shunt
+## Isolate the main breakout's onboard shunt
 
-The low-value current-sense resistor fitted to a typical INA219 breakout must not
+The low-value current-sense resistor fitted to the main `0x40` INA219 breakout must not
 remain connected across `VIN+` and `VIN-` when the external shunt is used.
 
 Use only a method documented for the exact breakout revision:
@@ -160,9 +171,12 @@ That current would flow through thin Kelvin leads, fuses, connectors, and PCB
 traces, corrupting the measurement and potentially overheating components.
 Isolating the differential shunt does not disable INA219 bus-voltage measurement.
 
+The optional `0x41` auxiliary board is different: retain its verified `0.1 ohm`
+onboard resistor in the limited branch. See [the dual-layout guide](optional-ina219.md).
+
 ## Protected monitor supply
 
-`VMON+` is fed from the protected bus side through `F3` into a board-rated DC/DC
+In the original layout, `VMON+` is fed from the protected bus side through `F3` into a board-rated DC/DC
 converter. The converter output supplies the ESP32-C3, INA219, and OLED at their
 required logic voltage. `GND` returns to protected DC- / BMS `P-`.
 
@@ -188,14 +202,15 @@ describe the default ESP32-C3 controller.
 
 The default bus is:
 
-| Signal      | ESP32-C3 default      | INA219 | OLED |
-| ----------- | --------------------- | ------ | ---- |
-| GND         | common GND            | GND    | GND  |
-| Logic power | compatible 3.3 V rail | VCC    | VCC  |
-| SCL         | GPIO1                 | SCL    | SCL  |
-| SDA         | GPIO0                 | SDA    | SDA  |
+| Signal      | ESP32-C3 default      | Main INA219 | Optional INA219 | OLED |
+| ----------- | --------------------- | ----------- | --------------- | ---- |
+| GND         | common protected P-   | GND         | GND             | GND  |
+| Logic power | regulated 3.3 V rail | VCC         | VCC             | VCC  |
+| SCL         | GPIO1                 | SCL         | SCL             | SCL  |
+| SDA         | GPIO0                 | SDA         | SDA             | SDA  |
 
-The INA219 default address is `0x40`; the OLED default is `0x3C`. SDA and SCL are
+The main INA219 default address is `0x40`, the optional auxiliary INA219 is
+`0x41`, and the OLED default is `0x3C`. SDA and SCL are
 two separate nets on one shared multidrop bus. Modules connect to both nets; they
 are not a single interchangeable wire.
 
@@ -224,16 +239,20 @@ See [`troubleshooting.md`](troubleshooting.md).
 Before battery connection, record and verify at least these items:
 
 - [ ] The main current path cannot pass through the INA219 breakout or monitor.
-- [ ] Battery/common negative and protected `P-` references match the documented
+- [ ] Protected system negative and BMS `P-` references match the documented
       non-isolated topology.
 - [ ] `K_BUS` reaches only the bus-side shunt tap through `F1`.
 - [ ] `K_BAT` reaches only the battery-side shunt tap through `F2`.
 - [ ] Neither Kelvin lead carries supply or load current.
 - [ ] `F1`, `F2`, `F3`, and `F_MAIN` have documented current, time-current, DC
       voltage, DC interrupt, holder, conductor, and environmental ratings.
-- [ ] The onboard breakout shunt is isolated by a documented method.
+- [ ] The main onboard breakout shunt is isolated by a documented method.
+- [ ] If fitted, the optional `0x41` board retains its verified onboard resistor,
+      has a battery-side independently fused `F3` feed, supplies both DC/DC input
+      and the external `AUX+` terminal from `VIN-`, and returns only to BMS `P-`.
+- [ ] Both INA219 VCC pins receive regulated 3.3 V, never battery voltage.
 - [ ] De-energized resistance/continuity measurements confirm no unwanted bridge
-      remains and both INA219 sense inputs remain connected.
+      remains on the main board and both of its sense inputs remain connected.
 - [ ] The converter, controller, sensor, and display voltage ratings are compatible.
 - [ ] No unfused energized lead is longer or less protected than the reviewed
       installation design permits.
@@ -250,6 +269,8 @@ wiring list alone does not establish measurement accuracy or operational safety.
 The editable
 [`../hardware/battery-monitor-schematic.tex`](../hardware/battery-monitor-schematic.tex)
 is the source of truth. The committed SVG is provided for documentation viewers.
+The upper panel shows the original single-sensor layout; the separate lower
+panel shows the alternative auxiliary branch and external low-consumption output.
 The schematic separates high-current, Kelvin-sense, logic-power, ground, SDA, and
 SCL nets; it is not a PCB, enclosure, cable-sizing, or physical-placement drawing.
 

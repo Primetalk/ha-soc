@@ -54,6 +54,11 @@ jobs:
             tests/battery_monitor_helpers_test.cpp -o "$binary"
           "$binary"
 
+      - name: Test optional INA219 presence and fault handling
+        run: |
+          python tests/optional_ina219_test.py
+          python tests/measurement_pipeline_test.py
+
       - name: Create non-secret ESPHome fixture
         run: cp -- secrets.example.yaml secrets.yaml
 

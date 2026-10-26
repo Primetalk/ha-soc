@@ -46,6 +46,9 @@ relay.
 | ESPHome version                                        | `2026.8.0`                                 |
 | ESP32-C3 board/revision                                |                                            |
 | I2C SDA/SCL pins                                       | GPIO0 / GPIO1 expected                     |
+| Layout: original / optional auxiliary                 |                                            |
+| Auxiliary INA219 make/revision/address/resistor        | absent or `0x41` / verified `0.1 ohm`       |
+| AUX continuous/inrush current and limiting rating      |                                            |
 | INA219 breakout make/revision                          |                                            |
 | Onboard-shunt isolation method                         | desolder / jumper / documented cut / other |
 | External shunt make/serial/rating                      | 500 A / 75 mV expected                     |
@@ -67,8 +70,8 @@ tolerance after seeing the result.
 
 - [ ] Main current path is charger/load positive bus -> external shunt bus side
       -> external shunt battery side -> battery positive.
-- [ ] Battery/common negative is continuous to INA219 and ESP32-C3 ground for
-      this non-isolated high-side design.
+- [ ] INA219, ESP32-C3, converter, OLED, and all auxiliary consumer returns
+      connect to protected BMS `P-`; no return bypasses the BMS via cell `B-`.
 - [ ] Main battery current cannot pass through the INA219 breakout.
 - [ ] Bus-side Kelvin tap connects only to INA219 `VIN+` through its protected
       sense lead.
@@ -85,7 +88,7 @@ tolerance after seeing the result.
       lugs with load-dependent voltage drop.
 - [ ] Thin leads are paired/routed together, mechanically protected, and cannot
       contact high-current conductors or sharp metal.
-- [ ] The breakout's onboard shunt has been electrically isolated using a
+- [ ] The main breakout's onboard shunt has been electrically isolated using a
       board-documented method.
 - [ ] Resistance/continuity measurement and the board schematic confirm no
       low-resistance onboard bridge remains between `VIN+` and `VIN-`.
@@ -95,6 +98,14 @@ tolerance after seeing the result.
       logic levels.
 - [ ] Battery and common-mode voltages remain within all IC, breakout, supply,
       connector, and insulation ratings.
+- [ ] If fitted, the optional board retains its verified `0.1 ohm` resistor,
+      is addressed `0x41`, and is not connected across the external main shunt.
+- [ ] In the dual layout, battery-side `F3` feeds aux `VIN+`; aux `VIN-` feeds
+      DC/DC battery-voltage input and the external `AUX+` output. There is no
+      additional bus-side DC/DC supply feed.
+- [ ] Both INA219 VCC pins are on the regulated 3.3 V rail.
+- [ ] Auxiliary branch continuous current, inrush, resistor dissipation, PCB,
+      connectors, conductors, and fuse clearing behavior meet recorded limits.
 - [ ] Main fuse, BMS, charger protection, and load protection are installed and
       independently verified.
 
@@ -119,8 +130,12 @@ esphome compile battery-monitor.yaml
 - [ ] The default GPIO0/GPIO1 build emits no strapping-pin or pin-conflict
       warning.
 - [ ] Firmware is flashed over USB with the monitor in a safe test setup.
-- [ ] Serial logs show I2C devices at INA219 `0x40` and OLED `0x3C` (or the
-      deliberately configured alternatives).
+- [ ] Serial logs show main INA219 `0x40`, OLED `0x3C`, and optional INA219
+      `0x41` when fitted (or deliberately configured alternatives).
+- [ ] Startup detection agrees with the physical layout; absence of a board
+      that should be fitted is a commissioning failure even if legacy mode runs.
+- [ ] A cold boot without the optional board selects the original single-sensor
+      behavior; a cold boot with it selects combined-current behavior.
 - [ ] There are no missing-component, I2C communication, font, include, or
       preference-schema errors.
 - [ ] The board cold-boots and resets reliably with actual I2C pull-ups attached.
@@ -234,6 +249,30 @@ If every verified current has the opposite sign, change
 [`packages/battery-config.yaml`](../packages/battery-config.yaml) from `1.0` to
 `-1.0`, rebuild, and repeat this section. Do not invert individual downstream
 entities or SOC formulas.
+
+### Optional auxiliary branch acceptance
+
+Use low-energy test equipment and retain all BMS/fuse protection. Do not
+disconnect live battery wiring to simulate faults. The auxiliary channel reads
+branch consumption as positive; the published battery current is
+`main_normalized_current - auxiliary_consumption`. Main polarity calibration
+does not reverse the independently oriented auxiliary channel.
+
+- [ ] With the main power branch idle, a measured `60 mA` auxiliary draw produces
+      about `-0.060 A` net current and negative power, within declared tolerances.
+- [ ] DC/DC input draw (including monitor/radio/display use) and a known external
+      `AUX+` consumer are both included; their current is not double-counted by
+      the main shunt.
+- [ ] Combined charging and auxiliary draw match the reference difference.
+- [ ] A controlled timed auxiliary draw changes remaining Ah by the measured
+      net Ah; the classification deadband does not discard it.
+- [ ] Voltage drop and temperature remain acceptable across the onboard resistor,
+      connector, and fuse at maximum intended branch load and startup.
+- [ ] Every auxiliary return is still behind BMS `P-`, and BMS cutoff disables
+      both main and auxiliary loads by the intended installation design.
+
+Record main current, auxiliary current, net current, reference values, temperature,
+and the external consumer used.
 
 ## 7. Manual anchors and unbounded SOC
 
@@ -387,6 +426,17 @@ not expose energized conductors or defeat required protection.
 - [ ] After valid samples return, measurement entities recover.
 - [ ] Conditions are reconstructed before the engine re-arms.
 - [ ] Recovery does not emit a synthetic threshold crossing.
+
+For a detected auxiliary board, repeat the failure/recovery test for that
+channel using a safe communication-fault method.
+
+- [ ] Stale auxiliary data invalidates the combined measurement; it does not
+      silently revert to main-only current.
+- [ ] Recovery resumes with fresh samples and does not integrate the gap.
+- [ ] Restart re-detects the hardware. An auxiliary board absent at boot selects
+      legacy behavior, so restart after removal is not a fail-safe removal test.
+- [ ] Adding a board after boot has no effect until restart; hot-plug operation
+      is not assumed or used as an acceptance method.
 
 Record failure method, durations, and observed transitions:
 

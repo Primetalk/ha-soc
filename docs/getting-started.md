@@ -53,6 +53,7 @@ fuse or holder.
 | ----------------------- | ------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
 | Controller              | ESP32-C3 SuperMini                    | Confirm the exact revision, pin labels, USB mode, flash size, and supply input.                               |
 | Current/voltage monitor | INA219 breakout                       | Its onboard differential shunt must be isolated by a board-documented method before using the external shunt. |
+| Optional branch monitor | Second INA219, default `0x41`, onboard `0.1 ohm` retained | Battery-side fused limited branch for DC/DC input and external low consumers; verify actual resistor and board ratings. |
 | External shunt          | 500 A / 75 mV                         | Use dedicated fused Kelvin leads; main current flows through the shunt, never through the INA219 board.       |
 | Display                 | SSD1306 128x64 I2C OLED               | Default address is `0x3C`; confirm voltage and logic compatibility.                                           |
 | Logic supply            | Protected battery-to-3.3 V DC/DC path | Select for actual input range, transients, inrush, temperature, and load.                                     |
@@ -76,6 +77,13 @@ must be selected for the actual system.
 
 Read [`wiring.md`](wiring.md) before assembling or energizing anything. Complete
 its de-energized checks before battery connection.
+
+Choose the original single-INA219 layout or the
+[optional dual-INA219 layout](optional-ina219.md). The same firmware detects
+the second board at boot; no separate firmware is required. In the dual layout
+the battery-side `F3` branch feeds the auxiliary sensor, then the DC/DC input and
+external low-consumption terminal. Both INA219 logic supplies remain regulated
+3.3 V. Change hardware only with power isolated and restart after changes.
 
 Then review [`../packages/battery-config.yaml`](../packages/battery-config.yaml).
 The settings are split into two groups:
@@ -177,8 +185,10 @@ Expected first-boot evidence includes:
 
 - the node joins the configured Wi-Fi network, or the password-protected fallback
   access point appears if it cannot;
-- the I2C scan finds the INA219 at `0x40` and OLED at `0x3C`, unless deliberately
-  changed;
+- the I2C scan finds the main INA219 at `0x40` and OLED at `0x3C`, plus `0x41`
+  only when the optional board is fitted (unless deliberately readdressed);
+- the detected single/dual mode agrees with the physical layout; an intended
+  second board missing at boot must be corrected before accepting readings;
 - the board repeatedly cold-boots and resets with the actual I2C pull-ups
   attached;
 - there are no missing-component, font, include, preference-schema, or I2C
@@ -191,8 +201,10 @@ cold-boot entry in [`troubleshooting.md`](troubleshooting.md). Non-strapping pin
 remove one known hazard but do not eliminate supply, board-revision, pull-up, or
 wiring faults. Do not assume that intermittent boot will correct itself.
 
-**Success criterion:** the node boots reliably, both expected I2C devices are
-present, and logs contain no unexplained errors.
+**Success criterion:** the node boots reliably, every fitted I2C device is
+present, the detected layout matches the wiring, and logs contain no unexplained
+errors. Detection is at boot only. A missing optional board selects legacy
+behavior; it cannot prove that an intended auxiliary branch is wired correctly.
 
 ## 6. Understand the fresh state
 

@@ -92,6 +92,9 @@ EXPECTED_DETAILED_MODULE_PORTS = {
     "supply-12v-in",
     "supply-3v3-out",
     "supply-gnd",
+    "aux-vin-plus", "aux-vin-minus", "aux-vcc", "aux-gnd", "aux-sda", "aux-scl",
+    "dual-supply-vin", "dual-supply-out", "dual-supply-gnd",
+    "dual-logic-vcc", "dual-logic-sda", "dual-logic-scl", "dual-logic-gnd",
 }
 
 EXPECTED_BALANCE_TAP_PORTS = {

@@ -48,7 +48,7 @@ for the checks above:
 | ---------- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `F_MAIN`   | Main battery positive conductor, bus, and installation     | No repository default. Size from maximum continuous charge/load current, cable ampacity, surge duration, BMS/contactors, and installation rules. The 500 A shunt rating is **not** the fuse rating.                             | Select from the coordinated main-system time-current study.                                                            | At least the worst-case system voltage and prospective battery fault current; normally a high-interrupt battery fuse system.                                       |
 | `F1`, `F2` | The two thin INA219 Kelvin leads                           | `0.5 A` each is the preliminary target; `0.1–1 A` may be reasonable if the selected wire and high-interrupt fuse family require another value. INA219 input current is tiny, so wire protection and breaking capacity dominate. | Fast-acting is normally preferred because there is no intentional inrush, subject to the selected part's actual curve. | At least the worst-case system voltage and the prospective fault current at each energized shunt tap. Both fuses and holders need an explicit DC interrupt rating. |
-| `F3`       | Thin nominal `+12 V` input lead and protected DC/DC supply | `1 A` time-delay is the preliminary target for the planned ESP32-C3, INA219, and OLED monitor. Recalculate from the actual converter/rail and reduce it when a smaller rating survives measured startup.                        | Time-delay is often useful for converter input-capacitor inrush; verify with the selected converter and curve.         | At least the worst-case system voltage and prospective fault current at the bus-side tap. It must also protect the actual input wire and converter.                |
+| `F3`       | Thin nominal `+12 V` input lead and protected DC/DC supply | `1 A` time-delay is the preliminary target for the planned ESP32-C3, INA219, and OLED monitor. Recalculate from the actual converter/rail and reduce it when a smaller rating survives measured startup.                        | Time-delay is often useful for converter input-capacitor inrush; verify with the selected converter and curve.         | At least the worst-case system voltage and prospective fault current at the selected bus-side or battery-side tap. Protect all downstream branch hardware and wiring.                |
 
 The capacity label `300 Ah` describes stored charge, not safe fault current. The
 shunt label `500 A / 75 mV` describes its measurement range, not the cable or
@@ -75,17 +75,25 @@ A low ampere rating does **not** make a miniature fuse safe on a battery tap.
 For example, a `0.5 A` fuse with a `35 A` interrupt rating is unsuitable where
 the prospective short-circuit current is `5 kA`.
 
-## `F3`: monitor-supply input protection
+## `F3`: monitor-supply or auxiliary-branch input protection
 
-`F3` protects the thin input lead to the DC/DC supply and the supply input. The
-schematic takes this feed from the bus side of the shunt so battery-supplied
-monitor consumption crosses the shunt and appears as discharge current.
+In the original single-sensor layout, `F3` protects the bus-side input lead to
+the DC/DC supply and its input. Monitor consumption then crosses the main shunt.
+
+In the [optional dual-sensor layout](optional-ina219.md), move `F3` to the
+battery-side branch tap, close to that source. It protects the complete branch:
+auxiliary INA219 onboard resistor and PCB, DC/DC input, external `AUX+` terminal,
+and all branch conductors. The main fuse stays unchanged; a fuse on the main bus
+does not protect this separate battery-side branch. Do not use `F1` or `F2` as
+branch supply fuses. `1 A` in the table is only a single-monitor starting point;
+recalculate it for the actual branch, including the external consumer.
 
 Estimate worst-case converter input current using:
 
 ```text
 I_input_max = (3.3 V * I_3V3_max) / (V_battery_min * efficiency_min)
               + I_converter_quiescent
+I_aux_branch_max = I_input_max + I_external_consumers_max
 ```
 
 Then select a fuse that:
@@ -101,6 +109,13 @@ Illustrative only: a `1.0 A` maximum `+3V3` load, `10 V` minimum battery input,
 `0.423 A` input. A `1 A` time-delay fuse can be a reasonable prototype choice
 after its derating, inrush, wire protection, and interrupt ratings are verified.
 Actual current must be measured during ESP32-C3 Wi-Fi startup and display use.
+For the dual layout, also include external-consumer continuous and startup
+current. The firmware default `3.2 A` is a measurement range, not a permissible
+continuous branch current or a fuse recommendation. A `0.1 ohm` resistor
+dissipates `I² × 0.1` watts (`1.024 W` at `3.2 A`); confirm its actual power
+rating, PCB thermal limits, terminal and wire limits, and derating. The lowest
+verified hardware limit and fuse clearing energy govern the branch. Add lower
+downstream protection where an output lead or consumer requires it.
 
 The DC/DC converter itself must accept the full battery range and transients;
 the label `+12 V nominal` does not mean its input is a regulated 12 volts.
@@ -137,7 +152,7 @@ Complete this table with manufacturer datasheets before energizing the battery:
 | Holder part number and ratings           |          |      |      |      |
 | Protected wire gauge/type/temp rating    |          |      |      |      |
 | Derated wire ampacity                    |          |      |      |      |
-| Expected continuous current              |          |      |      |      |
+| Expected continuous current (all AUX loads for F3) |          |      |      |      |
 | Maximum valid surge and duration         |          |      |      |      |
 | Fuse clearing time at wire fault current |          |      |      |      |
 | Prospective short-circuit current at tap |          |      |      |      |

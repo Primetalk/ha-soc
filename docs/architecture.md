@@ -82,7 +82,40 @@ normalization stage establishes the public sign convention:
 ## Measurement validity and freshness
 
 The INA219 package publishes raw sensor channels only when values are finite.
-Normalized current and signed power derive from the same raw-current sample.
+In the single-sensor layout, normalized current and signed power derive from
+one main-shunt current sample. A local optional-presence adapter composes the
+native ESPHome INA219 driver for the auxiliary board; it does not duplicate its
+calibration or conversion code. The adapter probes its configured address once
+at boot. Missing hardware selects the original single-sensor accounting without
+a failed component. An acknowledged board remains required until reboot, even
+if initialization or later reads fail.
+
+In the dual layout, each main-shunt callback combines that sample with the most
+recent fresh auxiliary sample:
+
+```text
+battery_current_A = normalized_main_current_A - auxiliary_consumption_A
+battery_power_W = battery_voltage_V * battery_current_A
+```
+
+The branch is supplied from the battery side of the main shunt. Auxiliary VIN+
+faces the battery, so its positive current means consumption. Negative auxiliary
+measurements retain their sign. The main sensor remains necessary even when it
+reads zero: the auxiliary sensor cannot account for unknown main-branch current.
+Samples are not simultaneous; at the default cadence the auxiliary value normally
+lags by up to one update interval. Both branches must satisfy the stale timeout.
+The combined value feeds current/power entities, SOC and energy integration,
+direction classification, rules, and charge detection. There is no integration
+deadband and no separate addition of auxiliary energy.
+
+A detected auxiliary board with invalid/stale readings makes the combined
+measurement unavailable. Read errors, math overflow, and lost calibration are
+rejected by the adapter. Integration and charge detection reset their baselines;
+recovery does not backfill the missing interval. Diagnostics expose boot-latched
+presence separately from current measurement health. Detection is repeated only
+on reboot, so a wiring fault present at boot is indistinguishable from an
+intentionally omitted board; commission the expected presence after every wiring
+change. See [optional INA219 wiring](optional-ina219.md).
 
 `Measurement Healthy` requires:
 
@@ -95,8 +128,10 @@ Rule readiness uses that same current-freshness policy. Charge-process inference
 additionally requires a fresh voltage timestamp. Both use the same age helper,
 but intentionally retain their existing consumer-specific requirements.
 
-If current samples become stale, firmware invalidates voltage, current, power,
-raw diagnostics, shunt voltage, and charging/discharging/idle states. It does not
+If main current samples become stale, firmware invalidates voltage, current, power,
+raw main diagnostics, shunt voltage, and charging/discharging/idle states.
+An auxiliary fault invalidates combined current/power and mode, while the main
+voltage and raw main diagnostics remain available for investigation. It does not
 publish fabricated zeroes. The rule engine becomes unready, and SOC integration
 does not bridge the missing interval.
 

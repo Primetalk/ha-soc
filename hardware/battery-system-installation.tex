@@ -145,7 +145,7 @@
   \node[font=\sffamily\Large\bfseries] at (18.5,18.65)
     {4S battery backup system --- installation overview};
   \node[note, text=black!65] at (18.5,18.12)
-    {Conceptual single-line diagram; the companion schematic defines the SOC monitor internals};
+    {Original single-INA219 layout; companion schematic defines internals; alternative dual layout below};
 
   % --------------------------------------------------------------------------
   % Four individual cells inside one dashed battery-pack enclosure. Electrical
@@ -491,6 +491,81 @@
   \node[warning box, anchor=west] at (0.85,-1.42)
     {SYSTEM OVERVIEW ONLY: cable sizing, DC interrupt ratings, physical fuse placement, PE/neutral switching,\\
      breakers, RCD/RCBO, surge protection, grounding, and local electrical-code compliance require engineering.};
+
+  % --------------------------------------------------------------------------
+  % Alternative supply topology. Upper system remains the original layout.
+  % --------------------------------------------------------------------------
+  \draw[black!25, line width=0.8pt] (0.85,-2.5) -- (36.95,-2.5);
+  \node[font=\sffamily\large\bfseries] at (18.5,-3.4)
+    {Alternative: optional auxiliary branch (replace upper VMON+ supply route)};
+  \node[note] at (18.5,-4.1)
+    {Main power, BMS, charger, inverter and ATS stay unchanged. Dedicated main Kelvin leads remain as above.};
+
+  \draw[dc positive] (2.2,-6.0) to[short, o-] (10.3,-6.0)
+    to[R] (12.5,-6.0)
+    -- (13.1,-6.0) to[fuse] (15.1,-6.0)
+    to[short, -o] (31.0,-6.0);
+  \node[note] at (11.4,-5.2) {external main shunt};
+  \node[note] at (15.3,-5.6) {$F_{\mathrm{MAIN}}$ unchanged};
+  \node[note, anchor=east] at (2.0,-6.0) {battery B+};
+  \node[note, anchor=west] at (31.2,-6.0) {main protected DC+ bus};
+  \node[note] at (11.4,-6.9)
+    {main INA219 \texttt{0x40}: onboard resistor isolated};
+
+  \fill[DcPositive] (4.0,-6.0) circle (2.1pt);
+  \draw[monitor power] (4.0,-6.0) to[fuse, l_={$F_3$}] (4.0,-10.0) -- (7.0,-10.0);
+  \node[note, anchor=east] at (3.8,-8.3)
+    {independent branch fuse\\close to battery-side source};
+  \pic (aux-install) at (9.5,-10.0)
+    {module={optional INA219 \texttt{0x41}/5.0cm/2.8cm}};
+  \draw[monitor power] (7.0,-10.0) to[R] (12.0,-10.0);
+  \node[note] at (9.5,-10.65) {onboard $0.1\,\Omega$ retained; verify R100};
+  \node[tiny note] at (9.5,-9.6) {A0 high / A1 low; verify board jumpers};
+  \draw[monitor power] (12.0,-10.0) -- (15.3,-10.0);
+  \fill[MonitorPower] (13.5,-10.0) circle (2.1pt);
+  \node[note, text=MonitorPower, anchor=south] at (13.5,-9.85) {\texttt{V\_AUX+}};
+
+  \pic (monitor-dual-install) at (18.8,-10.0)
+    {module={SOC monitor/7.0cm/2.8cm}};
+  \node[note] at (18.8,-9.7) {battery-input DC/DC $\rightarrow$ regulated 3.3 V};
+  \node[note] at (18.8,-10.45) {ESP32 + main INA219 \texttt{0x40} + OLED \texttt{0x3C}};
+
+  % V_AUX+ is also an explicit external low-consumption output.
+  \draw[monitor power] (13.5,-10.0) -- (13.5,-7.9) -- (28.5,-7.9) -- (28.5,-10.0)
+    to[short, -o] (31.0,-10.0);
+  \node[label text, anchor=west] at (31.3,-10.0) {AUX+ external terminal};
+  \node[note] at (27.8,-8.7) {external low-consumption load\\nominal battery voltage, not 3.3 V};
+
+  % Logic supplies all boards from the measured converter input.
+  \draw[monitor power] (20.5,-11.4) -- (20.5,-12.1) -- (8.0,-12.1) -- (8.0,-11.4);
+  \node[note, text=MonitorPower, fill=white, inner sep=1pt] at (16.2,-12.1)
+    {regulated 3.3 V to auxiliary VCC};
+  \draw[bidirectional data] (12.0,-10.9) -- (15.3,-10.9);
+  \node[tiny note, text=DataWire, anchor=south] at (13.65,-10.8)
+    {shared SDA / SCL};
+
+  % Every return stays downstream of the low-side BMS.
+  \draw[dc negative] (4.0,-13.5) to[short, o-] (31.0,-13.5) node[ocirc] {};
+  \node[note, anchor=east] at (3.8,-13.5) {BMS P- / protected DC-};
+  \node[label text, anchor=west] at (31.3,-13.5) {AUX- external terminal};
+  \fill[DcNegative] (10.5,-13.5) circle (2.1pt);
+  \draw[monitor ground] (10.5,-11.4) -- (10.5,-13.5);
+  \draw[white, line width=4.5pt] (10.5,-11.92) -- (10.5,-12.28);
+  \draw[monitor ground]
+    (10.5,-11.92) .. controls (10.75,-11.98) and (10.75,-12.22) .. (10.5,-12.28);
+  \fill[DcNegative] (22.0,-13.5) circle (2.1pt);
+  \draw[monitor ground] (22.0,-11.4) -- (22.0,-13.5);
+  \ModulePort{aux-install-vin-plus}{(7.0,-10.0)}{VIN+}{above left}{MonitorPower}
+  \ModulePort{aux-install-vin-minus}{(12.0,-10.0)}{VIN-}{above right}{MonitorPower}
+  \ModulePort{aux-install-vcc}{(8.0,-11.4)}{VCC 3V3}{above}{MonitorPower}
+  \ModulePort{aux-install-gnd}{(10.5,-11.4)}{GND}{above}{DcNegative}
+  \ModulePort{dual-install-bat-in}{(15.3,-10.0)}{BAT IN}{above right}{MonitorPower}
+  \ModulePort{dual-install-3v3-out}{(20.5,-11.4)}{3V3 OUT}{above}{MonitorPower}
+  \ModulePort{dual-install-gnd}{(22.0,-11.4)}{GND}{above}{DcNegative}
+  \node[warning box] at (18.5,-15.0)
+    {Do not retain the upper bus-side monitor-supply feed in this layout. Never bridge the main shunt with this small resistor.\\
+     All returns use BMS P-, never raw cell B-. Aux VIN carries battery voltage; aux VCC receives regulated 3.3 V.\\
+     F3 and branch ratings must cover DC/DC + external load/inrush. The firmware 3.2 A range is not a safe PCB current rating.};
 
   \end{scope}
 

@@ -101,6 +101,22 @@ binary="${temp_dir}/battery-monitor-helper-tests"
 "${binary}"
 ```
 
+The optional adapter test uses the installed ESPHome's real INA219 driver with
+simulated I2C transactions. Run it with the Python interpreter from the pinned
+ESPHome environment:
+
+```sh
+python tests/optional_ina219_test.py
+python tests/measurement_pipeline_test.py
+```
+
+It checks boot absence/presence, initialization/read faults, overflow, recovery,
+and conflicting I2C addresses. The pipeline test executes production YAML
+lambdas against a controlled clock and sensor recorder, including fault/stale
+invalidation and recovery without bridging gaps. `task test:optional-ina219` runs both;
+set `ESPHOME_PYTHON` when that environment's Python is not the default. Firmware
+CI runs it for both board targets.
+
 When firmware changes, validate and compile both entry points. See
 [`README.md`](README.md) for `battery-monitor.yaml` and
 [`docs/esp8266-migration.md`](docs/esp8266-migration.md) for
